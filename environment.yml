@@ -1,0 +1,13 @@
+name: polyA_analysis
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pandas>=1.5.0
+  - numpy>=1.23.0
+  - pysam>=0.21.0
+  - samtools
+  - bedtools
+  - nextflow

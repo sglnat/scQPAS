@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Data and results (don't commit large files)
+results/
+*.bam
+*.bam.bai
+*.gtf
+*.bed
+*.csv
+*.tsv
+
+# Nextflow
+work/
+.nextflow/
+.nextflow.log*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
