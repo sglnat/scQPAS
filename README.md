@@ -71,7 +71,7 @@ The pipeline processes single-cell BAM files to quantify distances between reads
 
 ### Data Flow
 
-![Pipeline Diagram](scQPAS/dataflow_1.jpg)
+![Pipeline Diagram](dataflow_1.jpg)
 
 ---
 
