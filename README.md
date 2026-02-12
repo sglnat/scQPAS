@@ -2,7 +2,6 @@
 
 A Nextflow pipeline for detecting and quantifying polyadenylation sites from single-cell RNA-seq data.
 
----
 
 ## Project Status
 
@@ -13,13 +12,12 @@ A Nextflow pipeline for detecting and quantifying polyadenylation sites from sin
 
 **To be implemented:**
 
-- Proper environment.yml file
+- Proper environment.yml file (or .toml ?)
 - Code for random amount of different CPA sites
 - Potentially: Code for visualizations of distance graphs
 - Code for Likelihood calculation
 - Nextflow pipeline and unit tests
 
----
 
 ## Repository Structure
 
@@ -56,7 +54,6 @@ scQPAS/
 └── results/                    # Output directory (git-ignored)
 ```
 
----
 
 ## Pipeline Overview
 
@@ -73,8 +70,6 @@ The pipeline processes single-cell BAM files to quantify distances between reads
 
 ![Pipeline Diagram](dataflow_1.jpg)
 
----
-
 ### Setup
 
 ```bash
@@ -89,7 +84,6 @@ conda env create -f environment.yml
 conda activate scQPAS
 ```
 
----
 
 ## Development Notes
 
@@ -105,7 +99,6 @@ conda activate scQPAS
 - No config file for parameters (all passed as CLI args)
 - Nextflow files localization
 
----
 
 ## License
 
