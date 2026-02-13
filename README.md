@@ -72,6 +72,8 @@ The pipeline processes single-cell BAM files to quantify distances between reads
 
 ### Setup
 
+<span style="color:red">This is just a placeholder! To be filled correctly once applicable</span>
+
 ```bash
 # Clone the repository
 git clone https://github.com/sglnat/scQPAS.git
