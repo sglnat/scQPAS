@@ -72,7 +72,7 @@ The pipeline processes single-cell BAM files to quantify distances between reads
 
 ### Setup
 
-<span style="color: red;">This is just a placeholder! To be filled correctly once applicable</span>
+**This is just a placeholder! To be filled correctly once applicable**
 
 ```bash
 # Clone the repository
