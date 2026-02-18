@@ -1,7 +1,10 @@
-name: polyA_analysis
+# scQPAS Conda Environment
+# Install with: conda env create -f environment.yml
+
+name: scqpas
 channels:
-  - bioconda
   - conda-forge
+  - bioconda
   - defaults
 dependencies:
   - python=3.10
@@ -10,4 +13,3 @@ dependencies:
   - pysam>=0.21.0
   - samtools
   - bedtools
-  - nextflow
