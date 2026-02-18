@@ -3,13 +3,24 @@ import numpy as np
 
 
 
-def extract_exons(gtf_file_path, exons_output):
+def extract_exons(gtf_file_path, exons_output=None):
     '''
-    Extract exons from a GTF file and save them in BED format.
+    Extract exons from a GTF file.
+    
+    Parameters
+    ----------
+    gtf_file_path : str
+        Path to GTF file
+    exons_output : str, optional
+        Path to output BED file. If None, returns DataFrame only (in-memory).
+    
+    Returns
+    -------
+    pd.DataFrame
+        Exons with columns: chr, start, end, transcript_id, strand, gene_id
     '''
 
     gtf_df = pd.read_csv(gtf_file_path, sep='\t', comment='#', header=None)
-    # exons_df = gtf_df[gtf_df[2].isin(['transcript', 'exon'])]
     exons = gtf_df[gtf_df[2] == 'exon']
     exons = exons[[0, 3, 4, 8, 6]].copy() # 0: chromosome, 3: start, 4: end, 6: strand, 8: attributes
     exons.columns = ['chr', 'start', 'end', 'attributes', 'strand']
@@ -18,16 +29,31 @@ def extract_exons(gtf_file_path, exons_output):
     exons['gene_id'] = exons['attributes'].str.extract(r'gene_id\s+"([^"]+)"')
     exons.drop(columns='attributes', inplace=True)
     exons = exons[['chr', 'start', 'end', 'transcript_id', 'strand', 'gene_id']]
-    #print(exons)
-    exons.to_csv(exons_output, sep='\t', header=False, index=False, columns=['chr', 'start', 'end', 'transcript_id', 'strand', 'gene_id'])
+    
+    if exons_output is not None:
+        exons.to_csv(exons_output, sep='\t', header=False, index=False, columns=['chr', 'start', 'end', 'transcript_id', 'strand', 'gene_id'])
 
     return exons
 
 
 
-def calculate_introns(exons, introns_output):
+def calculate_introns(exons, introns_output=None):
     '''
+    Calculate introns from exons.
+    
     Returns dataframe with transcript-specific introns, defined as the regions between exons of the same transcript
+    
+    Parameters
+    ----------
+    exons : pd.DataFrame
+        Exons DataFrame from extract_exons()
+    introns_output : str, optional
+        Path to output BED file. If None, returns DataFrame only (in-memory).
+    
+    Returns
+    -------
+    pd.DataFrame
+        Introns with columns: chr, start, end, intron_id, length_intron, strand, gene_id
     '''
 
     grouped_exons = exons.groupby('transcript_id')
@@ -41,40 +67,59 @@ def calculate_introns(exons, introns_output):
 
         # Calculate intron positions
         for i in range(len(exons_starts) - 1):
-            intron_start = exons_ends[i] # points to the first bp of the intron
-            intron_end = exons_starts[i + 1] # points one bp past the last bp of the intron, as per .bed specifications
-            
-            #if intron_start <= intron_end:
+            intron_start = exons_ends[i]
+            intron_end = exons_starts[i + 1]
             intron_length = intron_end - intron_start
             introns_list.append({
                 'chr': group['chr'].iloc[0],
                 'start': intron_start,
                 'end': intron_end,
-                'intron_id': f"{transcript_id}_{i}",  # Unique intron identifier
+                'intron_id': f"{transcript_id}_{i}",
                 'length_intron': intron_length,
                 'strand': group['strand'].iloc[0],
                 'gene_id': group['gene_id'].iloc[0]
             })
 
-    # Create a DataFrame for introns and save as BED file
-    introns_df = pd.DataFrame(introns_list) #columns: chr, start, end, intron_id, length_intron, strand
-    #print(introns_df)
+    introns_df = pd.DataFrame(introns_list)
+    
+    if introns_output is not None:
+        introns_df.to_csv(introns_output, sep='\t', header=False, index=False)
 
-    # Save to BED format (requires specific format: no header and only certain columns)
-    introns_df.to_csv(introns_output, sep='\t', header=False, index=False)
+    return introns_df
 
 
 
-def get_bed_from_df(df_input, chr, cpa_site, bed_output):
+def get_bed_from_df(df_input, chr, cpa_site, bed_output=None):
     '''
-    Save a DataFrame in BED format.
-    Expects the DataFrame to have columns: 'chr', 'start', 'end', 'name', 'strand', 'gene_id'
+    Create BED format for reads with PAS-specific coordinate adjustment.
+    
+    Parameters
+    ----------
+    df_input : pd.DataFrame or str
+        Reads DataFrame or path to CSV file with columns: chr, start, end, strand, read_id
+    chr : str
+        Target chromosome (e.g., 'chr12')
+    cpa_site : int
+        Cleavage/polyadenylation site position (genomic coordinate)
+    bed_output : str, optional
+        Path to output BED file. If None, returns DataFrame only (in-memory).
+    
+    Returns
+    -------
+    pd.DataFrame
+        BED format DataFrame with columns: chr, start, end, read_id, dummy, strand
+    
+    Notes
+    -----
+    For strand-specific coordinate adjustment:
+    - Forward strand: Use region from read start to PAS position
+    - Reverse strand: Use region from PAS position to read end
     '''
-
-    #df = pd.read_csv(df_input, sep=',', names=['UMI', 'CB', 'chr', 'start', 'end', 'strand', 'CIGAR', 'is_polyA', 'len_pA', 'cpa_site', 'is_polyA_RS', 'distance_to_cpa'])
-    df = pd.read_csv(df_input, sep=',')
-
-    print(df.head())
+    # Handle both DataFrame and file path inputs
+    if isinstance(df_input, str):
+        df = pd.read_csv(df_input, sep=',')
+    else:
+        df = df_input.copy()
 
     bed = []
     
@@ -93,29 +138,42 @@ def get_bed_from_df(df_input, chr, cpa_site, bed_output):
 
     bed_df = pd.DataFrame(bed, columns=['chr', 'start', 'end', 'read_id', 'strand'])
     bed_df.insert(4, 'dummy', 1000)
-    print(bed_df)
+    
+    if bed_output is not None:
+        bed_df.to_csv(bed_output, sep='\t', header=False, index=False)
 
-    bed_df.to_csv(bed_output, sep='\t', header=False, index=False)
+    return bed_df
 
 
 
-def extract_genes(gtf_file_path, genes_output):
+def extract_genes(gtf_file_path, genes_output=None):
     '''
-    Extract genes from a GTF file and save them in BED format.
+    Extract genes from a GTF file.
+    
+    Parameters
+    ----------
+    gtf_file_path : str
+        Path to GTF file
+    genes_output : str, optional
+        Path to output BED file. If None, returns DataFrame only (in-memory).
+    
+    Returns
+    -------
+    pd.DataFrame
+        Genes with columns: chr, start, end, gene_id, dummy, strand
     '''
 
     gtf_df = pd.read_csv(gtf_file_path, sep='\t', comment='#', header=None)
-    # exons_df = gtf_df[gtf_df[2].isin(['transcript', 'exon'])]
     genes = gtf_df[gtf_df[2] == 'gene']
-    genes = genes[[0, 3, 4, 8, 6]].copy() # 0: chromosome, 3: start, 4: end, 6: strand, 8: attributes
+    genes = genes[[0, 3, 4, 8, 6]].copy()
     genes.columns = ['chr', 'start', 'end', 'attributes', 'strand']
-    genes['start'] = genes['start'] - 1  # Convert start to 0-based
+    genes['start'] = genes['start'] - 1
     genes['gene_id'] = genes['attributes'].str.extract(r'gene_id\s+"([^"]+)"')
     genes.drop(columns='attributes', inplace=True)
     genes = genes[['chr', 'start', 'end', 'gene_id', 'strand']]
     genes.insert(4, 'dummy', 1000)
-    print(genes)
 
-    genes.to_csv(genes_output, sep='\t', header=False, index=False, columns=['chr', 'start', 'end', 'gene_id', 'dummy', 'strand'])
+    if genes_output is not None:
+        genes.to_csv(genes_output, sep='\t', header=False, index=False, columns=['chr', 'start', 'end', 'gene_id', 'dummy', 'strand'])
 
-    #return genes
+    return genes
