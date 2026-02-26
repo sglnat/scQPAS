@@ -10,11 +10,11 @@ import tempfile
 from pathlib import Path
 import pysam
 
-from src.reads import extract_reads
-from src.annotation import extract_genes, extract_exons, calculate_introns, get_bed_from_df
-from src.cigar import get_cigar_bed, filter_by_cigar
-from src.distances import calculate_distances
-from src.bedtools import run_bedtools_intersect
+from src.extract_reads_BAM import extract_reads
+from src.extract_annotation_GTF import extract_genes, extract_exons, calculate_introns, get_bed_from_df
+from src.extract_cigar_BAM import get_cigar_bed, filter_by_cigar
+from src.calculate_distances import calculate_distances
+from src.bedtools_intersections import run_bedtools_intersect
 
 logger = logging.getLogger(__name__)
 
