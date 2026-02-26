@@ -5,15 +5,11 @@ This module provides the command-line interface for the scQPAS pipeline.
 Core pipeline logic is in core.py.
 """
 
-import sys
-import os
 import logging
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + '/..')
-
 import click
-from src.core import run_pipeline
-from src.logging_config import configure_logging
+from .core import run_pipeline
+from .logging_config import configure_logging
 
 logger = logging.getLogger(__name__)
 

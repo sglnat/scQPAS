@@ -49,11 +49,8 @@ dev = [
 "Documentation" = "https://github.com/sglnat/scQPAS"
 "Source Code" = "https://github.com/sglnat/scQPAS"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
 [project.scripts]
-scqpas = "src.cli:main"
+scqpas = "scqpas.cli:main"
 
 [tool.black]
 line-length = 88

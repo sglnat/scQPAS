@@ -2,8 +2,37 @@
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 *.egg-info/
 .pytest_cache/
+dist/
+build/
+*.egg
+.coverage
+htmlcov/
+.tox/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+.env
+.env.local
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.sublime-project
+.sublime-workspace
+.project
+.pydevproject
+.settings/
+*.iml
+.editorconfig
 
 # Data and results (don't commit large files)
 results/
@@ -18,10 +47,51 @@ results/
 work/
 .nextflow/
 .nextflow.log*
+.nextflow.history
+trace-*
+timeline-*
 
 # Jupyter
 .ipynb_checkpoints/
+*.ipynb_checkpoints
+*.nb.html
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+*.swp
+*.swo
+
+# Logging
+*.log
+*.log.*
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*~
+.~*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Package managers
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Documentation
+docs/_build/
+site/
+
+# Testing and coverage
+.coverage.*
+.fail
+.pytest_failures
