@@ -94,11 +94,17 @@ def filter_by_cigar(reads, filtered_reads, intronic_reads, cigar_df, output_csv=
         filtered_reads = pd.read_csv(filtered_reads, sep='\t', header=None, names=['chr', 'start', 'end', 'read_id', 'dummy', 'strand'])
     else:
         filtered_reads = filtered_reads.copy()
+        # If DataFrame from bedtools with numeric column names (0,1,2,...), rename them
+        if isinstance(filtered_reads.columns[0], int):
+            filtered_reads.columns = ['chr', 'start', 'end', 'read_id', 'dummy', 'strand']
     
     if isinstance(intronic_reads, str):
         intronic_reads = pd.read_csv(intronic_reads, sep='\t', header=None, names=['chr_read', 'start_read', 'end_read', 'read_id', 'score_read', 'strand_read', 'chr_intron', 'start_intron', 'end_intron', 'intron_id', 'length_intron', 'strand_intron', 'gene_id'])
     else:
         intronic_reads = intronic_reads.copy()
+        # If DataFrame from bedtools with numeric column names (0,1,2,...), rename them
+        if isinstance(intronic_reads.columns[0], int):
+            intronic_reads.columns = ['chr_read', 'start_read', 'end_read', 'read_id', 'dummy_read', 'strand_read', 'chr_intron', 'start_intron', 'end_intron', 'intron_id', 'length_intron', 'strand_intron']
     
     cigar_df = cigar_df.copy()
     cigar_df.columns = ['chr_cf', 'start_cf', 'end_cf', 'read_id', 'strand_cf', 'CIGAR']

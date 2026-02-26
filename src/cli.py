@@ -5,12 +5,16 @@ This module provides a single command-line interface that orchestrates the compl
 pipeline with in-memory processing (only temporary files required for bedtools).
 """
 
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + '/..')
+
 import click
 import pysam
 import pandas as pd
 import subprocess
 import tempfile
-import os
 from pathlib import Path
 
 from src.reads import extract_reads
@@ -42,8 +46,6 @@ def _run_bedtools_intersect(bed_a_df, bed_b_df, tmpdir, name_a="a", name_b="b", 
     pd.DataFrame
         Intersection results
     """
-    if flags is None:
-        flags = ['-wo']  # default: write overlapping positions from both
     
     bed_a_path = os.path.join(tmpdir, f'bed_{name_a}.bed')
     bed_b_path = os.path.join(tmpdir, f'bed_{name_b}.bed')
@@ -204,6 +206,11 @@ def main(bam, gtf, chr, pas, output, percentage_threshold, length_threshold, use
                 name_a="reads", name_b="genes",
                 flags=['-wa', '-s', '-f', '1.0']
             )
+            
+            # Assign column names: -wa outputs columns from reads_bed (6 cols)
+            if not reads_genes_df.empty:
+                reads_genes_df.columns = ['chr', 'start', 'end', 'read_id', 'dummy', 'strand']
+            
             click.echo(f"      ✓ Found {len(reads_genes_df)} read-gene intersections")
             
             # Intersect reads with introns
@@ -213,6 +220,14 @@ def main(bam, gtf, chr, pas, output, percentage_threshold, length_threshold, use
                 name_a="reads_genes", name_b="introns",
                 flags=['-s', '-F', '1.0', '-wa', '-wb']
             )
+            
+            # Assign column names: -wa outputs A columns, -wb outputs B columns
+            if not reads_introns_df.empty:
+                reads_introns_df.columns = [
+                    'chr_read', 'start_read', 'end_read', 'read_id', 'dummy_read', 'strand_read',
+                    'chr_intron', 'start_intron', 'end_intron', 'intron_id', 'length_intron', 'strand_intron'
+                ]
+            
             click.echo(f"      ✓ Found {len(reads_introns_df)} read-intron intersections")
             
             # ========== STEP 5: FILTER BY CIGAR ==========

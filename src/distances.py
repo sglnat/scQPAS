@@ -69,12 +69,12 @@ def best_cpa(df_cpa_sites):
 def calculate_distances(valid_reads, intronic_reads):
 
     intronic_reads['transcript_id'] = intronic_reads['intron_id'].str.split('_').str[0]
-    print(intronic_reads)
+    #print(intronic_reads)
 
     # Create a new DataFrame for storing distances
     distance_df = pd.DataFrame()
     distance_df[['read_id', 'transcript_id', 'intronic', 'CIGAR_N']] = valid_reads[['read_id', 'transcript_id', 'intronic', 'CIGAR_N']]
-    print(distance_df)
+    #print(distance_df)
 
     # Merging to include total intron lengths in the distance_df
     distance_df = distance_df.merge(intronic_reads.groupby(['read_id', 'transcript_id'])['length_intron'].sum().reset_index(), on=['read_id', 'transcript_id'], how='left')
@@ -95,6 +95,6 @@ def calculate_distances(valid_reads, intronic_reads):
     intronic_mask = valid_reads['intronic'] == True
     distance_df.loc[intronic_mask, 'distance'] -= distance_df.loc[intronic_mask, 'total_intron_len']
 
-    print(distance_df)
+    #print(distance_df)
 
     return distance_df
