@@ -1,6 +1,8 @@
+import logging
 import pandas as pd
 import numpy as np
 
+logger = logging.getLogger(__name__)
 
 
 def df_distances(reads_path, valid_reads_path, intronic_reads_path, out_distances_path):

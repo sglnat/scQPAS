@@ -5,9 +5,12 @@ This module handles running bedtools intersect with flexible flags and managing
 BED file inputs/outputs.
 """
 
+import logging
 import os
 import subprocess
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def run_bedtools_intersect(bed_a_df, bed_b_df, tmpdir, name_a="a", name_b="b", flags=None):

@@ -1,6 +1,8 @@
+import logging
 import pandas as pd
 import numpy as np
 
+logger = logging.getLogger(__name__)
 
 
 def extract_exons(gtf_file_path, exons_output=None):

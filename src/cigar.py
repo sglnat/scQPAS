@@ -1,7 +1,9 @@
+import logging
 import pandas as pd
 import numpy as np
 import re
 
+logger = logging.getLogger(__name__)
 
 
 def get_cigar_bed(df_input, bed_output=None):

@@ -1,85 +1,21 @@
 """
-Unified CLI for scQPAS - Single-cell Quantification of PolyAdenylation Sites.
+CLI interface for scQPAS - Single-cell Quantification of PolyAdenylation Sites.
 
-This module provides a single command-line interface that orchestrates the complete
-pipeline with in-memory processing (only temporary files required for bedtools).
+This module provides the command-line interface for the scQPAS pipeline.
+Core pipeline logic is in core.py.
 """
 
 import sys
 import os
+import logging
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + '/..')
 
 import click
-import pysam
-import pandas as pd
-import subprocess
-import tempfile
-from pathlib import Path
+from src.core import run_pipeline
+from src.logging_config import configure_logging
 
-from src.reads import extract_reads
-from src.annotation import extract_genes, extract_exons, calculate_introns, get_bed_from_df
-from src.cigar import get_cigar_bed, filter_by_cigar
-from src.distances import calculate_distances
-
-
-def _run_bedtools_intersect(bed_a_df, bed_b_df, tmpdir, name_a="a", name_b="b", flags=None):
-    """
-    Run bedtools intersect with flexible flags.
-    
-    Parameters
-    ----------
-    bed_a_df : pd.DataFrame
-        BED format DataFrame (chr, start, end, ...)
-    bed_b_df : pd.DataFrame
-        BED format DataFrame
-    tmpdir : str
-        Temporary directory for intermediate files
-    name_a, name_b : str
-        Names for temporary files
-    flags : list, optional
-        bedtools flags (e.g., ['-wa', '-s', '-f', '1.0'])
-        Default: ['-wo'] (write overlapping positions from both)
-    
-    Returns
-    -------
-    pd.DataFrame
-        Intersection results
-    """
-    
-    bed_a_path = os.path.join(tmpdir, f'bed_{name_a}.bed')
-    bed_b_path = os.path.join(tmpdir, f'bed_{name_b}.bed')
-    output_path = os.path.join(tmpdir, f'intersection_{name_a}_{name_b}.bed')
-    
-    # Write temporary BED files
-    bed_a_df.to_csv(bed_a_path, sep='\t', header=False, index=False)
-    bed_b_df.to_csv(bed_b_path, sep='\t', header=False, index=False)
-    
-    # Run bedtools intersect with custom flags
-    try:
-        cmd = ['bedtools', 'intersect'] + flags + ['-a', bed_a_path, '-b', bed_b_path]
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        
-        if result.stdout.strip():
-            with open(output_path, 'w') as f:
-                f.write(result.stdout)
-            return pd.read_csv(output_path, sep='\t', header=None)
-        else:
-            return pd.DataFrame()
-    except FileNotFoundError:
-        raise click.ClickException(
-            "bedtools not found. Please install bedtools: conda install -c bioconda bedtools"
-        )
-    except subprocess.CalledProcessError as e:
-        raise click.ClickException(f"bedtools error: {e.stderr}")
-
-
-
+logger = logging.getLogger(__name__)
 
 
 @click.command()
@@ -132,7 +68,19 @@ def _run_bedtools_intersect(bed_a_df, bed_b_df, tmpdir, name_a="a", name_b="b", 
     default=False,
     help='Use fixed soft-clipped coordinates from BAM XO/XF tags'
 )
-def main(bam, gtf, chr, pas, output, percentage_threshold, length_threshold, use_fc):
+@click.option(
+    '--log-level',
+    type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR'], case_sensitive=False),
+    default='INFO',
+    help='Logging level. Default: INFO'
+)
+@click.option(
+    '--log-file',
+    type=click.Path(),
+    default='scqpas.log',
+    help='Log file path. Default: scqpas.log (set to empty string to disable file logging)'
+)
+def main(bam, gtf, chr, pas, output, percentage_threshold, length_threshold, use_fc, log_level, log_file):
     """
     Calculate distances from CPA sites to reads.
     
@@ -152,127 +100,33 @@ def main(bam, gtf, chr, pas, output, percentage_threshold, length_threshold, use
     """
     
     try:
-        click.echo("\n" + "=" * 70)
-        click.echo("scQPAS: Single-cell Quantification of PolyAdenylation Sites")
-        click.echo("=" * 70)
+        # Configure logging based on user's options
+        log_level_int = getattr(logging, log_level.upper())
+        # If log_file is empty string, pass None to disable file logging
+        log_file_arg = log_file if log_file else None
+        configure_logging(log_level=log_level_int, log_file=log_file_arg)
         
-        with tempfile.TemporaryDirectory() as tmpdir:
-            
-            # ========== STEP 1: EXTRACT READS ==========
-            click.echo("\n[1/6] Extracting reads from BAM file...")
-            with pysam.AlignmentFile(bam, "rb") as sam:
-                reads_df = extract_reads(
-                    sam,
-                    percentage_threshold=percentage_threshold,
-                    length_threshold=length_threshold,
-                    use_fc=use_fc,
-                )
-            
-            polyA_count = reads_df['is_polyA'].sum()
-            click.echo(f"      ✓ Extracted {len(reads_df)} total reads")
-            click.echo(f"      ✓ Found {polyA_count} polyA-containing reads")
-            
-            # ========== STEP 2: EXTRACT ANNOTATION ==========
-            click.echo("\n[2/6] Extracting annotation from GTF...")
-            
-            # All functions now support in-memory operation (output=None)
-            genes_df = extract_genes(gtf)
-            exons_df = extract_exons(gtf)
-            introns_df = calculate_introns(exons_df)
-            
-            click.echo(f"      ✓ Extracted {len(genes_df)} genes")
-            click.echo(f"      ✓ Extracted {len(exons_df)} exons")
-            click.echo(f"      ✓ Calculated {len(introns_df)} introns")
-            
-            # ========== STEP 3: EXTRACT CIGAR-DERIVED INTRONS ==========
-            click.echo("\n[3/6] Parsing CIGAR strings...")
-            
-            # Pass DataFrame directly (no file conversion needed)
-            cigar_df = get_cigar_bed(reads_df)
-            click.echo(f"      ✓ Extracted {len(cigar_df)} CIGAR-derived introns")
-            
-            # ========== STEP 4: RUN BEDTOOLS INTERSECTIONS ==========
-            click.echo("\n[4/6] Intersecting reads with annotated features...")
-            
-            # Convert reads and annotation to BED format
-            reads_bed_df = get_bed_from_df(reads_df, chr, pas)
-            genes_bed_df = genes_df[['chr', 'start', 'end', 'gene_id', 'dummy', 'strand']]
-            introns_bed_df = introns_df[['chr', 'start', 'end', 'intron_id', 'length_intron', 'strand']]
-            
-            # Intersect reads with genes
-            # Flags: -wa (write A), -s (same strand), -f 1.0 (A must be 100% covered by B)
-            reads_genes_df = _run_bedtools_intersect(
-                reads_bed_df, genes_bed_df, tmpdir, 
-                name_a="reads", name_b="genes",
-                flags=['-wa', '-s', '-f', '1.0']
-            )
-            
-            # Assign column names: -wa outputs columns from reads_bed (6 cols)
-            if not reads_genes_df.empty:
-                reads_genes_df.columns = ['chr', 'start', 'end', 'read_id', 'dummy', 'strand']
-            
-            click.echo(f"      ✓ Found {len(reads_genes_df)} read-gene intersections")
-            
-            # Intersect reads with introns
-            # Flags: -s (same strand), -F 1.0 (B must be 100% covered by A), -wa -wb (write both)
-            reads_introns_df = _run_bedtools_intersect(
-                reads_genes_df, introns_bed_df, tmpdir, 
-                name_a="reads_genes", name_b="introns",
-                flags=['-s', '-F', '1.0', '-wa', '-wb']
-            )
-            
-            # Assign column names: -wa outputs A columns, -wb outputs B columns
-            if not reads_introns_df.empty:
-                reads_introns_df.columns = [
-                    'chr_read', 'start_read', 'end_read', 'read_id', 'dummy_read', 'strand_read',
-                    'chr_intron', 'start_intron', 'end_intron', 'intron_id', 'length_intron', 'strand_intron'
-                ]
-            
-            click.echo(f"      ✓ Found {len(reads_introns_df)} read-intron intersections")
-            
-            # ========== STEP 5: FILTER BY CIGAR ==========
-            click.echo("\n[5/6] Filtering reads by CIGAR string validation...")
-            
-            # Pass DataFrames directly (no file conversion needed)
-            valid_reads = filter_by_cigar(
-                reads_df,
-                reads_genes_df,
-                reads_introns_df,
-                cigar_df
-            )
-            
-            click.echo(f"      ✓ Retained {len(valid_reads)} valid reads")
-            click.echo(f"      ✓ Intronic reads: {valid_reads['intronic'].sum()}")
-            
-            # ========== STEP 6: CALCULATE DISTANCES ==========
-            click.echo("\n[6/6] Calculating distances from CPA sites...")
-            
-            distances_df = calculate_distances(valid_reads, reads_introns_df)
-            
-            click.echo(f"      ✓ Calculated distances for {len(distances_df)} reads")
-        
-        # ========== WRITE OUTPUT ==========
-        output_path = Path(output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        distances_df.to_csv(output_path, index=False)
-        
-        # ========== SUMMARY ==========
-        click.echo("\n" + "=" * 70)
-        click.echo("✓ PIPELINE COMPLETED SUCCESSFULLY")
-        click.echo("=" * 70)
-        click.echo(f"Results written to: {output_path.absolute()}")
-        click.echo(f"Total reads processed: {len(distances_df)}")
-        click.echo(f"Mean distance: {distances_df['distance'].mean():.1f} bp")
-        click.echo(f"Median distance: {distances_df['distance'].median():.1f} bp")
-        click.echo(f"Std dev: {distances_df['distance'].std():.1f} bp")
-        click.echo("=" * 70 + "\n")
+        run_pipeline(
+            bam_path=bam,
+            gtf_path=gtf,
+            chr=chr,
+            pas=pas,
+            output_path=output,
+            percentage_threshold=percentage_threshold,
+            length_threshold=length_threshold,
+            use_fc=use_fc
+        )
         
     except click.ClickException:
         raise
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {e}")
+        raise click.ClickException(str(e))
+    except RuntimeError as e:
+        logger.error(f"Pipeline error: {e}")
+        raise click.ClickException(str(e))
     except Exception as e:
-        click.echo(f"\n✗ ERROR: {e}\n", err=True)
-        import traceback
-        click.echo(traceback.format_exc(), err=True)
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         raise SystemExit(1)
 
 

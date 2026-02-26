@@ -1,5 +1,8 @@
+import logging
 import pandas as pd
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 def extract_reads(sam, percentage_threshold, length_threshold, use_fc):
     reads = []
