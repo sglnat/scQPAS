@@ -27,7 +27,8 @@ def run_pipeline(
     output_path,
     percentage_threshold=80,
     length_threshold=5,
-    use_fc=False
+    use_fc=False,
+    config_manager=None
 ):
     """
     Execute the complete scQPAS pipeline.
@@ -49,6 +50,7 @@ def run_pipeline(
         percentage_threshold: Min % of A nucleotides in polyA region (0-100). Default: 80
         length_threshold: Min length of polyA tail (bp). Default: 5
         use_fc: Use fixed soft-clipped coordinates from BAM XO/XF tags. Default: False
+        config_manager: ConfigManager instance for accessing pipeline configuration. Default: None
     
     Returns:
         distances_df: DataFrame with calculated distances
@@ -72,6 +74,7 @@ def run_pipeline(
                 percentage_threshold=percentage_threshold,
                 length_threshold=length_threshold,
                 use_fc=use_fc,
+                config_manager=config_manager
             )
         
         polyA_count = reads_df['is_polyA'].sum()
@@ -82,9 +85,9 @@ def run_pipeline(
         logger.info("[2/6] Extracting annotation from GTF...")
         
         # All functions now support in-memory operation (output=None)
-        genes_df = extract_genes(gtf_path)
-        exons_df = extract_exons(gtf_path)
-        introns_df = calculate_introns(exons_df)
+        genes_df = extract_genes(gtf_path, config_manager=config_manager)
+        exons_df = extract_exons(gtf_path, config_manager=config_manager)
+        introns_df = calculate_introns(exons_df, config_manager=config_manager)
         
         logger.info(f"      ✓ Extracted {len(genes_df)} genes")
         logger.info(f"      ✓ Extracted {len(exons_df)} exons")
@@ -101,7 +104,7 @@ def run_pipeline(
         logger.info("[4/6] Intersecting reads with annotated features...")
         
         # Convert reads and annotation to BED format
-        reads_bed_df = get_bed_from_df(reads_df, chr, pas)
+        reads_bed_df = get_bed_from_df(reads_df, chr, pas, config_manager=config_manager)
         genes_bed_df = genes_df[['chr', 'start', 'end', 'gene_id', 'dummy', 'strand']]
         introns_bed_df = introns_df[['chr', 'start', 'end', 'intron_id', 'length_intron', 'strand']]
         

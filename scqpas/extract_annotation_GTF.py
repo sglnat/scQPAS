@@ -5,7 +5,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def extract_exons(gtf_file_path, exons_output=None):
+def extract_exons(gtf_file_path, exons_output=None, config_manager=None):
     '''
     Extract exons from a GTF file.
     
@@ -39,7 +39,7 @@ def extract_exons(gtf_file_path, exons_output=None):
 
 
 
-def calculate_introns(exons, introns_output=None):
+def calculate_introns(exons, introns_output=None, config_manager=None):
     '''
     Calculate introns from exons.
     
@@ -91,7 +91,7 @@ def calculate_introns(exons, introns_output=None):
 
 
 
-def get_bed_from_df(df_input, chr, cpa_site, bed_output=None):
+def get_bed_from_df(df_input, chr, cpa_site, bed_output=None, config_manager=None):
     '''
     Create BED format for reads with PAS-specific coordinate adjustment.
     
@@ -139,7 +139,14 @@ def get_bed_from_df(df_input, chr, cpa_site, bed_output=None):
             bed.append([row['chr'], start, end, row['read_id'], row['strand']])
 
     bed_df = pd.DataFrame(bed, columns=['chr', 'start', 'end', 'read_id', 'strand'])
-    bed_df.insert(4, 'dummy', 1000)
+    
+    # Get bedtools score from config with fallback to default
+    if config_manager:
+        bedtools_score = config_manager.get('output', 'bedtools_score', 1000)
+    else:
+        bedtools_score = 1000
+    
+    bed_df.insert(4, 'dummy', bedtools_score)
     
     if bed_output is not None:
         bed_df.to_csv(bed_output, sep='\t', header=False, index=False)
@@ -148,7 +155,7 @@ def get_bed_from_df(df_input, chr, cpa_site, bed_output=None):
 
 
 
-def extract_genes(gtf_file_path, genes_output=None):
+def extract_genes(gtf_file_path, genes_output=None, config_manager=None):
     '''
     Extract genes from a GTF file.
     
@@ -173,7 +180,14 @@ def extract_genes(gtf_file_path, genes_output=None):
     genes['gene_id'] = genes['attributes'].str.extract(r'gene_id\s+"([^"]+)"')
     genes.drop(columns='attributes', inplace=True)
     genes = genes[['chr', 'start', 'end', 'gene_id', 'strand']]
-    genes.insert(4, 'dummy', 1000)
+    
+    # Get bedtools score from config with fallback to default
+    if config_manager:
+        bedtools_score = config_manager.get('output', 'bedtools_score', 1000)
+    else:
+        bedtools_score = 1000
+    
+    genes.insert(4, 'dummy', bedtools_score)
 
     if genes_output is not None:
         genes.to_csv(genes_output, sep='\t', header=False, index=False, columns=['chr', 'start', 'end', 'gene_id', 'dummy', 'strand'])

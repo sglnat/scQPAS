@@ -33,6 +33,8 @@ dependencies = [
     "pandas>=1.5.0",
     "numpy>=1.23.0",
     "click>=8.0",
+    "pysam>=0.21.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

@@ -39,6 +39,64 @@ run_pipeline(
 )
 ```
 
+## Configuration
+
+scQPAS uses YAML configuration files for managing pipeline parameters. You can use the default configuration or provide your own.
+
+### Using Default Configuration
+
+The default configuration is located at `scqpas/config/defaults.yaml` and includes:
+- **PolyA detection**: percentage threshold (80%), length threshold (5 bp)
+- **Output settings**: default filenames and BEDtools score
+- **Logging**: default level (INFO) and log file location
+
+### Using Custom Configuration
+
+Create a custom YAML config file with your desired parameters:
+
+```yaml
+# my_config.yaml
+polya_detection:
+  percentage_threshold: 85
+  length_threshold: 6
+  short_polyA_length_cutoff: 5
+  short_polyA_required_percentage: 100
+  use_fixed_coordinates: false
+
+output:
+  default_output_file: "my_results.csv"
+  bedtools_score: 1000
+  column_separator: "\t"
+
+logging:
+  default_level: "DEBUG"
+  default_file: "my_pipeline.log"
+  enable_file_logging: true
+```
+
+Then use it with the CLI:
+
+```bash
+scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --chr chr12 --pas 6538371
+```
+
+### Parameter Priority
+
+Command-line arguments override config file values, which override defaults:
+
+```
+Default config < Custom config file < CLI arguments
+```
+
+For example:
+```bash
+# Uses config file value for percentage_threshold
+scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --chr chr12 --pas 6538371
+
+# CLI argument overrides config file
+scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --chr chr12 --pas 6538371 --percentage-threshold 90
+```
+
 ## Project Status
 
 **Current Stage:**
@@ -128,9 +186,10 @@ pip install -e ".[dev]"
 ### Code organization
 
 - **`scqpas/`**: Core Python modules with importable functions
+- **`scqpas/config/`**: Configuration files and config manager
 - **`cli.py`**: CLI interface that wraps core functions
 - **`tests/`**: Unit tests (to be expanded)
-- No config file for parameters (all passed as CLI args)
+- Centralized config management via YAML files (see Configuration section above)
 - Nextflow files localization
 
 

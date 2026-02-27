@@ -4,7 +4,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-def extract_reads(sam, percentage_threshold, length_threshold, use_fc):
+def extract_reads(sam, percentage_threshold, length_threshold, use_fc, config_manager=None):
     reads = []
     read_ids = []
     
@@ -25,7 +25,7 @@ def extract_reads(sam, percentage_threshold, length_threshold, use_fc):
         right_end = tuples[-1]
 
         # Check if the read is polyA
-        is_polyA, len_pA = check_polyA(read, left_end, right_end, rev, percentage_threshold, length_threshold, use_fc)
+        is_polyA, len_pA = check_polyA(read, left_end, right_end, rev, percentage_threshold, length_threshold, use_fc, config_manager=config_manager)
 
         # Update the CPA sites DataFrame
         cpa_site = get_cpa_sites(is_polyA, end)
@@ -62,7 +62,7 @@ def count_A(sub_sequence):
     return number_A
 
 
-def check_polyA(read, left_end, right_end, rev, percentage_threshold, length_threshold, use_fc):
+def check_polyA(read, left_end, right_end, rev, percentage_threshold, length_threshold, use_fc, config_manager=None):
     """
     Parameters
     ----------
@@ -99,11 +99,22 @@ def check_polyA(read, left_end, right_end, rev, percentage_threshold, length_thr
         True if you want to use fixed softclipped region.
         False if you do not want to use fixed softclipped region.        
     
+    config_manager : ConfigManager, optional
+        Configuration manager for accessing pipeline settings.
+    
     Returns
     -------        
     True if a read has polyA tail.
     False if a read does not have a polyA tail.
-    """          
+    """
+    
+    # Get config values with fallbacks
+    if config_manager:
+        short_polyA_length_cutoff = config_manager.get('polya_detection', 'short_polyA_length_cutoff', 5)
+        short_polyA_required_percentage = config_manager.get('polya_detection', 'short_polyA_required_percentage', 100)
+    else:
+        short_polyA_length_cutoff = 5
+        short_polyA_required_percentage = 100          
     full_sequence = read.get_forward_sequence()
 
     # if read is mapped to negative strand, polyA tail should be on the left end
@@ -126,9 +137,9 @@ def check_polyA(read, left_end, right_end, rev, percentage_threshold, length_thr
         num_A = count_A(potential_polyA)
         percentage_A = (num_A/len_pA)*100
         
-        # for softclipped length of <=6, you want to have 100% "A"        
-        if len_pA <= 5:
-            percentage_threshold = 100
+        # for softclipped length <= short_polyA_length_cutoff, enforce 100% A requirement
+        if len_pA <= short_polyA_length_cutoff:
+            percentage_threshold = short_polyA_required_percentage
                 
         # decide whether a read is polyA or not
         if len_pA >= length_threshold and percentage_A >= percentage_threshold:
@@ -157,9 +168,9 @@ def check_polyA(read, left_end, right_end, rev, percentage_threshold, length_thr
         num_A = count_A(potential_polyA)
         percentage_A = (num_A/len_pA)*100
         
-        # for softclipped length of <=6, you want to have 100% "A"  
-        if len_pA <= 5:
-            percentage_threshold = 100
+        # for softclipped length <= short_polyA_length_cutoff, enforce 100% A requirement  
+        if len_pA <= short_polyA_length_cutoff:
+            percentage_threshold = short_polyA_required_percentage
         
         # decide whether a read is polyA or not
         if len_pA >= length_threshold and percentage_A >= percentage_threshold:

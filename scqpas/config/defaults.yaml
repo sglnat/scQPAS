@@ -1,0 +1,61 @@
+# scQPAS Configuration Defaults
+# Edit values here to change default behavior across all pipeline runs
+
+# PolyA detection parameters
+polya_detection:
+  # Minimum percentage of A nucleotides required in softclipped region to call as polyA
+  # Value range: 0-100. Default: 80
+  percentage_threshold: 80
+  
+  # Minimum length of polyA tail in base pairs
+  # Default: 5
+  length_threshold: 5
+  
+  # Threshold below which polyA tails require 100% A content
+  # Softclipped regions <= this length must have percentage_required: 100% A
+  # Default: 5
+  short_polyA_length_cutoff: 5
+  
+  # Percentage of A nucleotides required for short polyA tails
+  # Applied when len_pA <= short_polyA_length_cutoff
+  # Default: 100
+  short_polyA_required_percentage: 100
+  
+  # Use fixed soft-clipped coordinates from BAM XO/XF tags
+  # Set to true to use fixed coordinates, false to use original coordinates
+  # Default: false
+  use_fixed_coordinates: false
+
+# Output and formatting
+output:
+  # Default output filename (can be overridden via CLI --output)
+  default_output_file: "distances.csv"
+  
+  # Dummy score field for BED format compatibility with bedtools
+  # This is a placeholder value used in BED files
+  bedtools_score: 1000
+  
+  # Column separator for TSV/CSV files
+  column_separator: "\t"
+
+# Logging configuration
+logging:
+  # Default logging level (can be overridden via CLI --log-level)
+  # Options: DEBUG, INFO, WARNING, ERROR
+  default_level: "INFO"
+  
+  # Default log file path (can be overridden via CLI --log-file)
+  # Set to empty string to disable file logging
+  default_file: "scqpas.log"
+  
+  # Log message format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Enable file logging by default
+  enable_file_logging: true
+
+# Input file handling
+input:
+  # Skip reads without supported tags (UB, CB)
+  # Set to true to require these tags, false to allow None
+  require_barcodes: false
