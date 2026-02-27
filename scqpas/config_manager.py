@@ -21,11 +21,11 @@ logger = logging.getLogger(__name__)
 
 class ConfigManager:
     """Load and manage scQPAS configuration from YAML files."""
-    
+
     def __init__(self, config_path: Optional[str] = None):
         """
         Initialize config manager.
-        
+
         Parameters
         ----------
         config_path : str, optional
@@ -39,18 +39,18 @@ class ConfigManager:
         else:
             self.config_path = self._get_default_config_path()
             logger.debug(f"Using default config from: {self.config_path}")
-        
+
         self.config = self._load_config()
-    
+
     @staticmethod
     def _get_default_config_path() -> Path:
         """Get path to default config file."""
         return Path(__file__).parent / "config" / "defaults.yaml"
-    
+
     def _load_config(self) -> dict:
         """
         Load YAML configuration file.
-        
+
         Returns
         -------
         dict
@@ -64,11 +64,11 @@ class ConfigManager:
                 return config
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML configuration file: {e}")
-    
+
     def get(self, section: str, key: str, default: Any = None) -> Any:
         """
         Get configuration value with fallback to default.
-        
+
         Parameters
         ----------
         section : str
@@ -77,12 +77,12 @@ class ConfigManager:
             Configuration key (e.g., 'percentage_threshold')
         default : Any, optional
             Fallback default value if key not found
-        
+
         Returns
         -------
         Any
             Configuration value or default
-        
+
         Examples
         --------
         >>> config = ConfigManager()
@@ -93,31 +93,31 @@ class ConfigManager:
             return self.config.get(section, {}).get(key, default)
         except (AttributeError, TypeError):
             return default
-    
+
     def get_section(self, section: str) -> dict:
         """
         Get entire configuration section.
-        
+
         Parameters
         ----------
         section : str
             Configuration section name
-        
+
         Returns
         -------
         dict
             Configuration section dictionary
-        
+
         Examples
         --------
         >>> config = ConfigManager()
         >>> polya_config = config.get_section('polya_detection')
         """
         return self.config.get(section, {})
-    
+
     def to_dict(self) -> dict:
         """Return full configuration as dictionary."""
         return self.config.copy()
-    
+
     def __repr__(self) -> str:
         return f"ConfigManager(config_path={self.config_path})"
