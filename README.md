@@ -109,6 +109,9 @@ scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --chr chr12
 - ✅ CIGAR-based intron validation
 - ✅ Distance calculation from CPA sites
 - ✅ Logging framework implemented
+- ✅ YAML-based configuration management
+- ✅ Comprehensive docstrings (NumPy format) for all functions
+- ✅ Full type hints on all function signatures
 
 **To be implemented:**
 
@@ -132,12 +135,16 @@ scQPAS/
 │   ├── cli.py                         # CLI interface (Click-based)
 │   ├── core.py                        # Pipeline orchestration logic
 │   ├── logging_config.py              # Logging configuration
+│   ├── config_manager.py              # Configuration management
 │   ├── extract_reads_BAM.py           # BAM file parsing, polyA detection
 │   ├── extract_annotation_GTF.py      # GTF parsing, feature extraction
 │   ├── extend_1kb_GTF.py              # GTF terminal exon extension
 │   ├── extract_cigar_BAM.py           # CIGAR string parsing and validation
 │   ├── calculate_distances.py         # Distance computation logic
-│   └── bedtools_intersections.py      # BEDtools intersection wrapper
+│   ├── bedtools_intersections.py      # BEDtools intersection wrapper
+│   │
+│   └── config/                        # Configuration files
+│       └── defaults.yaml              # Default pipeline parameters
 │
 ├── tests/                             # Unit tests
 │   └── __init__.py
@@ -168,7 +175,14 @@ Additional:
 ## Requirements
 
 - Python ≥ 3.10
-- Dependencies: pandas, numpy, click, pysam, bedtools
+- **Core dependencies**: pandas ≥ 1.5.0, numpy ≥ 1.23.0, click ≥ 8.0, pysam ≥ 0.21.0, pyyaml ≥ 6.0
+- **External**: bedtools (for sequence intersection operations)
+
+**Development dependencies** (optional, for `pip install -e ".[dev]"`):
+- pytest ≥ 7.0 (testing)
+- black ≥ 23.0 (code formatting)
+- mypy ≥ 1.0 (static type checking)
+- sphinx ≥ 5.0 (documentation generation)
 
 See `pyproject.toml` for complete version specifications.
 
@@ -183,6 +197,40 @@ cd scQPAS
 pip install -e ".[dev]"
 ```
 
+### Code quality
+
+The codebase follows best practices for production-quality Python:
+
+**Docstrings**: All functions have comprehensive NumPy-style docstrings describing:
+- Purpose and behavior
+- Parameters with types and descriptions
+- Return values with types
+- Examples where applicable
+
+**Type Hints**: All function signatures include full type annotations:
+```python
+from typing import Optional, Union, Tuple
+import pandas as pd
+from .config_manager import ConfigManager
+
+def extract_exons(
+    gtf_file_path: str,
+    exons_output: Optional[str] = None,
+    config_manager: Optional[ConfigManager] = None,
+) -> pd.DataFrame:
+```
+
+These enable:
+- IDE autocomplete and inline documentation
+- Static type checking with mypy: `mypy scqpas/`
+- Better code clarity and maintainability
+- Programmatic API exploration
+
+**Code Formatting**: Use Black for consistent code style:
+```bash
+black scqpas/
+```
+
 ### Code organization
 
 - **`scqpas/`**: Core Python modules with importable functions
@@ -190,7 +238,6 @@ pip install -e ".[dev]"
 - **`cli.py`**: CLI interface that wraps core functions
 - **`tests/`**: Unit tests (to be expanded)
 - Centralized config management via YAML files (see Configuration section above)
-- Nextflow files localization
 
 
 ## License
