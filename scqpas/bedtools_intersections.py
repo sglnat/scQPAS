@@ -8,14 +8,21 @@ BED file inputs/outputs.
 import logging
 import os
 import subprocess
+from typing import Optional, List
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 
 def run_bedtools_intersect(
-    bed_a_df, bed_b_df, tmpdir, name_a="a", name_b="b", flags=None
-):
+    bed_a_df: pd.DataFrame,
+    bed_b_df: pd.DataFrame,
+    tmpdir: str,
+    name_a: str = "a",
+    name_b: str = "b",
+    flags: Optional[List[str]] = None,
+) -> pd.DataFrame:
     """
     Run bedtools intersect with flexible flags.
 

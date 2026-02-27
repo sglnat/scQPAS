@@ -1,11 +1,18 @@
 import logging
+from typing import Optional, Union
+
 import pandas as pd
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
-def df_distances(reads_path, valid_reads_path, intronic_reads_path, out_distances_path):
+def df_distances(
+    reads_path: str,
+    valid_reads_path: str,
+    intronic_reads_path: str,
+    out_distances_path: str,
+) -> None:
     """
     Load read data and calculate distances from reads to cleavage sites.
 
@@ -62,7 +69,7 @@ def df_distances(reads_path, valid_reads_path, intronic_reads_path, out_distance
 ####### Modify so that it takes multiple CPA sites #######
 
 
-def get_cpa_sites(df):
+def get_cpa_sites(df: pd.DataFrame) -> pd.DataFrame:
     """
     Count occurrences of each cleavage/polyadenylation site.
 
@@ -91,7 +98,7 @@ def get_cpa_sites(df):
     return df_cpa_sites
 
 
-def best_cpa(df_cpa_sites):
+def best_cpa(df_cpa_sites: pd.DataFrame) -> Optional[int]:
     """
     Identify the cleavage/polyadenylation site with the most supporting reads.
 
@@ -119,7 +126,9 @@ def best_cpa(df_cpa_sites):
     return best_cpa_site
 
 
-def calculate_distances(valid_reads, intronic_reads):
+def calculate_distances(
+    valid_reads: pd.DataFrame, intronic_reads: pd.DataFrame
+) -> pd.DataFrame:
     """
     Calculate distances from reads to cleavage/polyadenylation sites.
 

@@ -1,8 +1,9 @@
 import pandas as pd
+from typing import Optional
 import csv
 
 
-def adjust_terminal_exons(df):
+def adjust_terminal_exons(df: pd.DataFrame) -> pd.DataFrame:
     """
     Extend terminal exons by 1kb to capture extended 3' UTR regions.
 
@@ -47,7 +48,7 @@ def adjust_terminal_exons(df):
     return df
 
 
-def get_adj_df(input_file, output_file):
+def get_adj_df(input_file: str, output_file: str) -> pd.DataFrame:
     """
     Load GTF file, extend terminal exons, and save adjusted GTF.
 

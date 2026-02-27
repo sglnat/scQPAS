@@ -1,11 +1,19 @@
 import logging
+from typing import Optional, Union
+
 import pandas as pd
 import numpy as np
+
+from .config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 
 
-def extract_exons(gtf_file_path, exons_output=None, config_manager=None):
+def extract_exons(
+    gtf_file_path: str,
+    exons_output: Optional[str] = None,
+    config_manager: Optional[ConfigManager] = None,
+) -> pd.DataFrame:
     """
     Extract exons from a GTF file.
 
@@ -50,7 +58,11 @@ def extract_exons(gtf_file_path, exons_output=None, config_manager=None):
     return exons
 
 
-def calculate_introns(exons, introns_output=None, config_manager=None):
+def calculate_introns(
+    exons: pd.DataFrame,
+    introns_output: Optional[str] = None,
+    config_manager: Optional[ConfigManager] = None,
+) -> pd.DataFrame:
     """
     Calculate introns from exons.
 
@@ -106,7 +118,13 @@ def calculate_introns(exons, introns_output=None, config_manager=None):
     return introns_df
 
 
-def get_bed_from_df(df_input, chr, cpa_site, bed_output=None, config_manager=None):
+def get_bed_from_df(
+    df_input: Union[pd.DataFrame, str],
+    chr: str,
+    cpa_site: int,
+    bed_output: Optional[str] = None,
+    config_manager: Optional[ConfigManager] = None,
+) -> pd.DataFrame:
     """
     Create BED format for reads with PAS-specific coordinate adjustment.
 
@@ -172,7 +190,11 @@ def get_bed_from_df(df_input, chr, cpa_site, bed_output=None, config_manager=Non
     return bed_df
 
 
-def extract_genes(gtf_file_path, genes_output=None, config_manager=None):
+def extract_genes(
+    gtf_file_path: str,
+    genes_output: Optional[str] = None,
+    config_manager: Optional[ConfigManager] = None,
+) -> pd.DataFrame:
     """
     Extract genes from a GTF file.
 

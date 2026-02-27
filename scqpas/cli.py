@@ -6,6 +6,7 @@ Core pipeline logic is in core.py.
 """
 
 import logging
+from typing import Optional
 
 import click
 from .core import run_pipeline
@@ -79,18 +80,18 @@ logger = logging.getLogger(__name__)
     help="Log file path. Uses config default if not provided (set to empty string to disable)",
 )
 def main(
-    config,
-    bam,
-    gtf,
-    chr,
-    pas,
-    output,
-    percentage_threshold,
-    length_threshold,
-    use_fc,
-    log_level,
-    log_file,
-):
+    config: Optional[str],
+    bam: str,
+    gtf: str,
+    chr: str,
+    pas: int,
+    output: Optional[str],
+    percentage_threshold: Optional[int],
+    length_threshold: Optional[int],
+    use_fc: Optional[bool],
+    log_level: Optional[str],
+    log_file: Optional[str],
+) -> None:
     """
     Calculate distances from CPA sites to reads.
 

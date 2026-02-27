@@ -1,13 +1,21 @@
 import logging
+from typing import Optional, Tuple
+
 import pandas as pd
 import numpy as np
+
+from .config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 
 
 def extract_reads(
-    sam, percentage_threshold, length_threshold, use_fc, config_manager=None
-):
+    sam,
+    percentage_threshold: int,
+    length_threshold: int,
+    use_fc: bool,
+    config_manager: Optional[ConfigManager] = None,
+) -> pd.DataFrame:
     """
     Extract reads from BAM file and identify polyA-containing reads.
 
@@ -111,7 +119,7 @@ def extract_reads(
     return df
 
 
-def count_A(sub_sequence):
+def count_A(sub_sequence: str) -> int:
     """
     Count the number of adenine (A) nucleotides in a sequence.
 
@@ -133,14 +141,14 @@ def count_A(sub_sequence):
 
 def check_polyA(
     read,
-    left_end,
-    right_end,
-    rev,
-    percentage_threshold,
-    length_threshold,
-    use_fc,
-    config_manager=None,
-):
+    left_end: Tuple[int, int],
+    right_end: Tuple[int, int],
+    rev: bool,
+    percentage_threshold: int,
+    length_threshold: int,
+    use_fc: bool,
+    config_manager: Optional[ConfigManager] = None,
+) -> Tuple[bool, int]:
     """
     Parameters
     ----------
@@ -275,7 +283,7 @@ def check_polyA(
         return False, 0
 
 
-def get_cpa_sites(is_polyA, end):
+def get_cpa_sites(is_polyA: bool, end: int) -> Optional[int]:
     """
     Determine the cleavage/polyadenylation site for a read.
 
@@ -307,7 +315,7 @@ def get_cpa_sites(is_polyA, end):
     return cpa_site
 
 
-def get_readsets(df):
+def get_readsets(df: pd.DataFrame) -> pd.DataFrame:
     """
     Classify reads into polyA and non-polyA read sets based on UMI/barcode groups.
 

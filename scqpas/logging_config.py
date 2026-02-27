@@ -8,9 +8,10 @@ Logs are written to both console and a log file by default.
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 
-def configure_logging(log_level=logging.INFO, log_file="scqpas.log"):
+def configure_logging(log_level: int = logging.INFO, log_file: Optional[str] = "scqpas.log") -> None:
     """
     Configure logging for the application.
 

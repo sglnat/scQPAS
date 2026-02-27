@@ -8,7 +8,12 @@ All processing is in-memory except temporary files required for bedtools (auto-c
 import logging
 import tempfile
 from pathlib import Path
+from typing import Optional
+
+import pandas as pd
 import pysam
+
+from .config_manager import ConfigManager
 
 from .extract_reads_BAM import extract_reads
 from .extract_annotation_GTF import (
@@ -25,16 +30,16 @@ logger = logging.getLogger(__name__)
 
 
 def run_pipeline(
-    bam_path,
-    gtf_path,
-    chr,
-    pas,
-    output_path,
-    percentage_threshold=80,
-    length_threshold=5,
-    use_fc=False,
-    config_manager=None,
-):
+    bam_path: str,
+    gtf_path: str,
+    chr: str,
+    pas: int,
+    output_path: str,
+    percentage_threshold: int = 80,
+    length_threshold: int = 5,
+    use_fc: bool = False,
+    config_manager: Optional[ConfigManager] = None,
+) -> pd.DataFrame:
     """
     Execute the complete scQPAS pipeline.
 

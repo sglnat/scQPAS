@@ -1,4 +1,6 @@
 import logging
+from typing import Optional, Union
+
 import pandas as pd
 import numpy as np
 import re
@@ -6,7 +8,7 @@ import re
 logger = logging.getLogger(__name__)
 
 
-def get_cigar_bed(df_input, bed_output=None):
+def get_cigar_bed(df_input: Union[pd.DataFrame, str], bed_output: Optional[str] = None) -> pd.DataFrame:
     """
     Extract CIGAR-derived introns (N operations) from reads.
 
@@ -59,7 +61,13 @@ def get_cigar_bed(df_input, bed_output=None):
     return unmatched_df
 
 
-def filter_by_cigar(reads, filtered_reads, intronic_reads, cigar_df, output_csv=None):
+def filter_by_cigar(
+    reads: Union[pd.DataFrame, str],
+    filtered_reads: Union[pd.DataFrame, str],
+    intronic_reads: Union[pd.DataFrame, str],
+    cigar_df: pd.DataFrame,
+    output_csv: Optional[str] = None,
+) -> pd.DataFrame:
     """
     Filter reads by CIGAR string validation against annotation.
 
