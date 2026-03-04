@@ -6,7 +6,10 @@ A Python package for detecting and quantifying distances between reads and polya
 
 ### Prerequisites
 
-pip and conda must be installed, as scQPAS requires system dependencies (bedtools, samtools) and Python packages.
+**Miniconda or Anaconda** must be installed. This provides:
+- The conda package manager
+- Python 3.10+
+- Ability to manage system dependencies (bedtools, samtools) and Python packages
 
 ### User Installation
 
