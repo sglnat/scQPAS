@@ -120,9 +120,9 @@ def calculate_introns(
 
 def get_bed_from_df(
     df_input: Union[pd.DataFrame, str],
-    chr: str,
     cpa_site: int,
     bed_output: Optional[str] = None,
+    chr: Optional[str] = None,
     config_manager: Optional[ConfigManager] = None,
 ) -> pd.DataFrame:
     """
@@ -132,12 +132,12 @@ def get_bed_from_df(
     ----------
     df_input : pd.DataFrame or str
         Reads DataFrame or path to CSV file with columns: chr, start, end, strand, read_id
-    chr : str
-        Target chromosome (e.g., 'chr12')
     cpa_site : int
         Cleavage/polyadenylation site position (genomic coordinate)
     bed_output : str, optional
         Path to output BED file. If None, returns DataFrame only (in-memory).
+    chr : str, optional
+        Target chromosome (e.g., 'chr12'). If None, processes all chromosomes. Default: None
     config_manager : ConfigManager, optional
         Configuration manager for accessing bedtools_score setting. Default: None
 
@@ -162,10 +162,13 @@ def get_bed_from_df(
     bed = []
 
     for idx, row in df.iterrows():
-        if row["strand"] == "+" and row["chr"] == chr:
+        # If chr is specified, filter by chromosome; otherwise process all
+        chr_match = (row["chr"] == chr) if chr is not None else True
+        
+        if row["strand"] == "+" and chr_match:
             start = row["start"]
             end = cpa_site + 1  # BED end is exclusive
-        elif row["strand"] == "-" and row["chr"] == chr:
+        elif row["strand"] == "-" and chr_match:
             start = cpa_site  # BED start is inclusive
             end = row["end"]
         else:

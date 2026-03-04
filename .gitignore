@@ -95,3 +95,8 @@ site/
 .coverage.*
 .fail
 .pytest_failures
+
+# README and other documentation files
+README.html
+DESIGN_NOTES_ATLAS_FEATURE.md
+IMPLEMENTATION_SUMMARY.md

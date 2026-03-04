@@ -4,21 +4,54 @@ A Python package for detecting and quantifying distances between reads and polya
 
 ## Installation
 
-### From source (development mode)
+### Prerequisites
+
+pip and conda must be installed, as scQPAS requires system dependencies (bedtools, samtools) and Python packages.
+
+### User Installation
 
 ```bash
 git clone https://github.com/sglnat/scQPAS.git
 cd scQPAS
+
+# Create conda environment with all dependencies
+conda env create -f environment.yml
+
+# Activate the environment
+conda activate scqpas
+
+# Install scQPAS
+pip install .
+```
+
+### Development Installation
+
+For development work with editable mode:
+
+```bash
+git clone https://github.com/sglnat/scQPAS.git
+cd scQPAS
+
+# Create conda environment with all dependencies
+conda env create -f environment.yml
+
+# Activate the environment
+conda activate scqpas
+
+# Install scQPAS in editable mode
 pip install -e .
 ```
 
 ### Command-line usage
 
-Once installed, use the CLI:
+Once installed and the conda environment is activated, use the CLI:
 
 ```bash
-scqpas --bam sample.bam --gtf annotation.gtf --chr chr12 --pas 6538371 --output results.csv
+scqpas --bam sample.bam --gtf annotation.gtf --output results.csv
 ```
+
+The polyadenylation site (PAS) is now **automatically detected** from the read data by identifying
+the cleavage position with the most supporting evidence. No manual PAS specification is needed.
 
 For all options:
 ```bash
@@ -33,9 +66,8 @@ from scqpas import run_pipeline
 run_pipeline(
     bam_path='sample.bam',
     gtf_path='annotation.gtf',
-    chr='chr12',
-    pas=6538371,
     output_path='results.csv'
+    # Note: PAS is automatically detected from reads
 )
 ```
 
@@ -77,7 +109,7 @@ logging:
 Then use it with the CLI:
 
 ```bash
-scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --chr chr12 --pas 6538371
+scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --pas pas_sites.bed
 ```
 
 ### Parameter Priority
@@ -91,10 +123,10 @@ Default config < Custom config file < CLI arguments
 For example:
 ```bash
 # Uses config file value for percentage_threshold
-scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --chr chr12 --pas 6538371
+scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --pas pas_sites.bed
 
 # CLI argument overrides config file
-scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --chr chr12 --pas 6538371 --percentage-threshold 90
+scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --pas pas_sites.bed --percentage-threshold 90
 ```
 
 ## Project Status

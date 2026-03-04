@@ -69,61 +69,140 @@ def df_distances(
 ####### Modify so that it takes multiple CPA sites #######
 
 
-def get_cpa_sites(df: pd.DataFrame) -> pd.DataFrame:
+def get_cpa_sites(reads_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Count occurrences of each cleavage/polyadenylation site.
+    Count occurrences of each cleavage/polyadenylation site by chromosome.
+
+    Groups reads by chromosome and CPA site position to identify all putative
+    cleavage sites and their supporting read counts.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        DataFrame containing read information including cpa_site column.
+    reads_df : pd.DataFrame
+        DataFrame containing read information with columns 'chr' and 'cpa_site'.
+        Typically the output from extract_reads() in extract_reads_BAM.py.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns ['cpa_site', 'supporting_read_count'] showing
-        how many reads support each CPA site.
+        DataFrame with columns ['chr', 'cpa_site', 'supporting_read_count']
+        showing the number of reads supporting each (chr, cpa_site) pair.
+        Sorted by supporting_read_count in descending order.
     """
+    # Remove rows with missing CPA sites
+    df_valid = reads_df.dropna(subset=["cpa_site"])
 
-    # Initialize a DataFrame to hold the CPA site counts
-    df_cpa_sites = pd.DataFrame(columns=["cpa_site", "supporting_read_count"])
+    if df_valid.empty:
+        raise RuntimeError("No valid CPA sites found in reads")
 
-    # Count occurrences of each CPA site in the df
-    counts = df["cpa_site"].value_counts()
+    # Count occurrences of each (chr, cpa_site) pair
+    cpa_counts = (
+        df_valid.groupby(["chr", "cpa_site"])
+        .size()
+        .reset_index(name="supporting_read_count")
+    )
 
-    # Create a DataFrame from the counts Series
-    df_cpa_sites = counts.reset_index()
-    df_cpa_sites.columns = ["cpa_site", "supporting_read_count"]
+    # Sort by supporting read count (descending) for easy selection of best CPA
+    cpa_counts = cpa_counts.sort_values(
+        "supporting_read_count", ascending=False
+    ).reset_index(drop=True)
 
-    return df_cpa_sites
+    return cpa_counts
 
 
-def best_cpa(df_cpa_sites: pd.DataFrame) -> Optional[int]:
+def best_cpa(
+    cpa_sites_df: pd.DataFrame,
+) -> Optional[tuple]:
     """
     Identify the cleavage/polyadenylation site with the most supporting reads.
 
+    Selects the (chr, cpa_site) pair with the highest supporting read count.
+    This represents the most probable cleavage site in the dataset.
+
     Parameters
     ----------
-    df_cpa_sites : pd.DataFrame
-        DataFrame with columns ['cpa_site', 'supporting_read_count']
+    cpa_sites_df : pd.DataFrame
+        DataFrame with columns ['chr', 'cpa_site', 'supporting_read_count']
+        as returned by get_cpa_sites(). Should already be sorted by
+        supporting_read_count in descending order.
 
     Returns
     -------
-    int or None
-        The CPA site position with the highest read count, or None if empty
+    tuple or None
+        (chr, cpa_site_position) for the CPA site with highest read count,
+        or None if no CPA sites are found
     """
-    best_read_count = 0
-    best_cpa_site = None
+    if cpa_sites_df.empty:
+        return None
 
-    for _, row in df_cpa_sites.iterrows():
-        cpa_site = row["cpa_site"]
-        read_count = row[1]
+    # Get the first row (highest supporting read count due to sorting)
+    best_row = cpa_sites_df.iloc[0]
+    best_chr = best_row["chr"]
+    best_pos = best_row["cpa_site"]
 
-        if read_count > best_read_count:
-            best_read_count = read_count
-            best_cpa_site = cpa_site
+    return (best_chr, best_pos)
 
-    return best_cpa_site
+
+def detect_best_cpa_from_reads(
+    reads_df: pd.DataFrame,
+) -> tuple:
+    """
+    Automatically detect the best CPA site from read data.
+
+    This function analyzes the reads to identify the cleavage/polyadenylation site
+    with the most supporting evidence (reads with detected polyA tails).
+
+    Parameters
+    ----------
+    reads_df : pd.DataFrame
+        DataFrame from extract_reads() containing columns: read_id, chr, cpa_site,
+        is_polyA, and other read information.
+
+    Returns
+    -------
+    tuple
+        (chr, pas_pos, strand) where:
+        - chr: chromosome of the detected CPA site
+        - pas_pos: genomic position of the detected CPA site
+        - strand: strand information ('.' if not determinable from data,
+                  or '+'/'-' if available from reads at this position)
+
+    Raises
+    ------
+    RuntimeError
+        If no polyA reads are found or if no valid CPA sites can be detected
+    """
+    # Filter for polyA reads only (these are the ones with detected CPA sites)
+    polyA_reads = reads_df[reads_df["is_polyA"] == True].copy()
+
+    if polyA_reads.empty:
+        raise RuntimeError(
+            "No polyA reads found in BAM file. "
+            "Cannot detect CPA site from data. "
+            "Check if your BED file PAS coordinates are correct and overlap with reads."
+        )
+
+    # Get CPA site distribution
+    cpa_sites = get_cpa_sites(polyA_reads)
+
+    # Get the best (most supported) CPA
+    best_chr, best_cpa_pos = best_cpa(cpa_sites)
+
+    # Determine strand from reads at this CPA position
+    reads_at_cpa = polyA_reads[
+        (polyA_reads["chr"] == best_chr) & (polyA_reads["cpa_site"] == best_cpa_pos)
+    ]
+
+    # Get the most common strand at this position
+    strand_counts = reads_at_cpa["strand"].value_counts()
+    best_strand = strand_counts.index[0] if not strand_counts.empty else "."
+
+    logger.info(
+        f"Detected best CPA site: {best_chr}:{best_cpa_pos} ({best_strand}) "
+        f"with {reads_at_cpa.shape[0]} polyA-containing reads"
+    )
+
+    return best_chr, best_cpa_pos, best_strand
 
 
 def calculate_distances(

@@ -13,7 +13,6 @@ def extract_reads(
     sam,
     percentage_threshold: int,
     length_threshold: int,
-    use_fc: bool,
     config_manager: Optional[ConfigManager] = None,
 ) -> pd.DataFrame:
     """
@@ -30,8 +29,6 @@ def extract_reads(
         Minimum percentage of A nucleotides required in softclipped region (0-100)
     length_threshold : int
         Minimum length of polyA tail in base pairs
-    use_fc : bool
-        Whether to use fixed soft-clipped coordinates from BAM XO/XF tags
     config_manager : ConfigManager, optional
         Configuration manager for accessing pipeline settings
 
@@ -68,7 +65,6 @@ def extract_reads(
             rev,
             percentage_threshold,
             length_threshold,
-            use_fc,
             config_manager=config_manager,
         )
 
@@ -146,7 +142,6 @@ def check_polyA(
     rev: bool,
     percentage_threshold: int,
     length_threshold: int,
-    use_fc: bool,
     config_manager: Optional[ConfigManager] = None,
 ) -> Tuple[bool, int]:
     """
@@ -180,11 +175,6 @@ def check_polyA(
         in order to be considered as polyA reads.
         (Note: it does not have to be consecutive number of "A"s)
 
-    use_FC : bool
-        whether you use fixed softclipped region or original soft clipped region.
-        True if you want to use fixed softclipped region.
-        False if you do not want to use fixed softclipped region.
-
     config_manager : ConfigManager, optional
         Configuration manager for accessing pipeline settings.
 
@@ -209,23 +199,10 @@ def check_polyA(
 
     # if read is mapped to negative strand, polyA tail should be on the left end
     if rev == True and left_end[0] == 4:
-        if not use_fc:
-            potential_polyA = full_sequence[
-                len(full_sequence) - left_end[1] : len(full_sequence)
-            ]
-            len_pA = left_end[1]
-
-        elif use_fc:
-            OCS = read.get_tag("XO")
-            FCS = read.get_tag("XF")
-            difference = OCS - FCS
-            potential_polyA = full_sequence[
-                len(full_sequence) - left_end[1] + difference : len(full_sequence)
-            ]
-            # length of a softclipped region
-            len_pA = left_end[1] - difference
-            print("potential_polyA: " + str(potential_polyA))
-            print("length: " + str(len_pA))
+        potential_polyA = full_sequence[
+            len(full_sequence) - left_end[1] : len(full_sequence)
+        ]
+        len_pA = left_end[1]
 
         # you should use num_A not num_T because you use full_sequence rather than fasta.fetch()
         num_A = count_A(potential_polyA)
@@ -245,23 +222,10 @@ def check_polyA(
     # if right_end[0] == 4, it means soft clipped on the right side of a read.
     # right_end[1] gives how many bases are soft clipped on the right side.
     elif rev == False and right_end[0] == 4:
-        if not use_fc:
-            potential_polyA = full_sequence[
-                len(full_sequence) - right_end[1] : len(full_sequence)
-            ]
-            len_pA = right_end[1]
-
-        elif use_fc:
-            OCS = read.get_tag("XO")
-            FCS = read.get_tag("XF")
-            difference = FCS - OCS
-            potential_polyA = full_sequence[
-                len(full_sequence) - right_end[1] + difference : len(full_sequence)
-            ]
-            # length of a softclipped region
-            len_pA = right_end[1] - difference
-            print("potential_polyA: " + str(potential_polyA))
-            print("length: " + str(len_pA))
+        potential_polyA = full_sequence[
+            len(full_sequence) - right_end[1] : len(full_sequence)
+        ]
+        len_pA = right_end[1]
 
         num_A = count_A(potential_polyA)
         percentage_A = (num_A / len_pA) * 100

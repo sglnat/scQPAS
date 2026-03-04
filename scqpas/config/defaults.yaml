@@ -7,7 +7,7 @@ polya_detection:
   # Value range: 0-100. Default: 80
   percentage_threshold: 80
   
-  # Minimum length of polyA tail in base pairs
+  # Minimum length of soft-clipped region at 3' end of read in base pairs
   # Default: 5
   length_threshold: 5
   

@@ -35,12 +35,12 @@ logger = logging.getLogger(__name__)
     required=True,
     help="Path to GTF annotation file",
 )
-@click.option("--chr", type=str, required=True, help="Target chromosome (e.g., chr12)")
 @click.option(
     "--pas",
-    type=int,
-    required=True,
-    help="Polyadenylation site position (genomic coordinate)",
+    type=click.Path(exists=True),
+    required=False,
+    default=None,
+    help="Path to polyadenylation sites BED file (DEPRECATED - PAS now auto-detected from reads). Kept for backward compatibility.",
 )
 @click.option(
     "--output",
@@ -59,19 +59,13 @@ logger = logging.getLogger(__name__)
     "--length-threshold",
     type=int,
     default=None,
-    help="Min length of polyA tail (bp). Uses config default if not provided",
-)
-@click.option(
-    "--use-fc",
-    is_flag=True,
-    default=None,
-    help="Use fixed soft-clipped coordinates from BAM XO/XF tags",
+    help="Min length of soft-clipped region at 3' end (bp). Uses config default if not provided",
 )
 @click.option(
     "--log-level",
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
     default=None,
-    help="Logging level. Uses config default if not provided",
+    help="Logging level [DEBUG|INFO|WARNING|ERROR]. Default: INFO (from config)",
 )
 @click.option(
     "--log-file",
@@ -83,27 +77,27 @@ def main(
     config: Optional[str],
     bam: str,
     gtf: str,
-    chr: str,
-    pas: int,
+    pas: Optional[str],
     output: Optional[str],
     percentage_threshold: Optional[int],
     length_threshold: Optional[int],
-    use_fc: Optional[bool],
     log_level: Optional[str],
     log_file: Optional[str],
 ) -> None:
     """
-    Calculate distances from CPA sites to reads.
+    Calculate distances from cleavage sites to polyadenylation sites.
 
-    Processes a BAM file against a GTF annotation in 6 steps:
-    1. Extract polyA-containing reads from BAM
-    2. Extract annotation (genes, exons, introns) from GTF
-    3. Extract CIGAR-derived introns from reads
-    4. Intersect reads with annotated features (bedtools)
-    5. Filter reads by CIGAR string validation
-    6. Calculate distances from cleavage to PAS
+    Processes a BAM file against a GTF annotation to quantify distances between
+    reads and the automatically detected polyadenylation site.
 
-    All processing in-memory except temporary files for bedtools (auto-cleaned).
+    The PAS site is now automatically detected from the read data by identifying
+    the cleavage position with the most supporting evidence. This data-driven
+    approach eliminates the need for manual PAS specification.
+
+    Note: The --pas argument is deprecated and no longer used. PAS is determined
+    from read cleavage patterns instead.
+
+    All processing is in-memory except temporary files for bedtools (auto-cleaned).
 
     Configuration can be provided via:
     - Custom YAML config file (--config)
@@ -112,9 +106,9 @@ def main(
 
     Example:
 
-        scqpas --bam sample.bam --gtf annotation.gtf --chr chr12 --pas 6538371 --output results.csv
+        scqpas --bam sample.bam --gtf annotation.gtf --output results.csv
 
-        scqpas --config custom.yaml --bam sample.bam --gtf annotation.gtf --chr chr12 --pas 6538371
+        scqpas --config custom.yaml --bam sample.bam --gtf annotation.gtf --output results.csv
     """
 
     try:
@@ -140,12 +134,6 @@ def main(
                 "polya_detection", "length_threshold", 5
             )
 
-        # use_fc is a flag, so it's False by default in Click
-        if not use_fc:
-            use_fc = config_manager.get(
-                "polya_detection", "use_fixed_coordinates", False
-            )
-
         if log_level is None:
             log_level = config_manager.get("logging", "default_level", "INFO")
 
@@ -161,12 +149,10 @@ def main(
         run_pipeline(
             bam_path=bam,
             gtf_path=gtf,
-            chr=chr,
-            pas=pas,
+            pas_bed_path=pas,
             output_path=output,
             percentage_threshold=percentage_threshold,
             length_threshold=length_threshold,
-            use_fc=use_fc,
             config_manager=config_manager,
         )
 
