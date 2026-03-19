@@ -38,28 +38,33 @@ logger = logging.getLogger(__name__)
 @click.option(
     "--pas",
     type=click.Path(exists=True),
-    required=False,
-    default=None,
-    help="Path to polyadenylation sites BED file (DEPRECATED - PAS now auto-detected from reads). Kept for backward compatibility.",
+    required=True,
+    help="Path to polyadenylation sites BED file",
 )
 @click.option(
     "--output",
     "-o",
     type=click.Path(),
     default=None,
-    help="Output file path (CSV format). Uses config default if not provided",
+    help="Output file path (CSV format). [default: distances.csv from config]",
 )
 @click.option(
     "--percentage-threshold",
     type=int,
     default=None,
-    help="Min %% of A nucleotides in polyA region (0-100). Uses config default if not provided",
+    help="Min %% of A nucleotides in polyA region (0-100). [default: 80 from config]",
 )
 @click.option(
     "--length-threshold",
     type=int,
     default=None,
-    help="Min length of soft-clipped region at 3' end (bp). Uses config default if not provided",
+    help="Min length of soft-clipped region at 3' end (bp). [default: 5 from config]",
+)
+@click.option(
+    "--terminal-exon-extension",
+    type=int,
+    default=None,
+    help="Length in bp to extend terminal exons for PAS capture. [default: 1000 from config]",
 )
 @click.option(
     "--log-level",
@@ -73,29 +78,41 @@ logger = logging.getLogger(__name__)
     default=None,
     help="Log file path. Uses config default if not provided (set to empty string to disable)",
 )
+@click.option(
+    "--debug-output",
+    type=click.Path(),
+    default=None,
+    help="Directory to save intermediate pipeline files for debugging/inspection",
+)
 def main(
     config: Optional[str],
     bam: str,
     gtf: str,
-    pas: Optional[str],
+    pas: str,
     output: Optional[str],
     percentage_threshold: Optional[int],
     length_threshold: Optional[int],
+    terminal_exon_extension: Optional[int],
     log_level: Optional[str],
     log_file: Optional[str],
+    debug_output: Optional[str],
 ) -> None:
     """
-    Calculate distances from cleavage sites to polyadenylation sites.
+    Calculate distances from read starts to polyadenylation sites.
 
-    Processes a BAM file against a GTF annotation to quantify distances between
-    reads and the automatically detected polyadenylation site.
+    Processes a BAM file against a GTF annotation and a PAS BED file to compute
+    genomic distances from the 5' start of each read to the associated PAS position.
 
-    The PAS site is now automatically detected from the read data by identifying
-    the cleavage position with the most supporting evidence. This data-driven
-    approach eliminates the need for manual PAS specification.
+    The PAS site assignment is based on:
+    1. Automatic detection of the most frequently used PAS in the dataset
+    2. Association of PAS with transcripts they overlap
+    3. Assignment of reads to transcripts and their associated PAS sites
 
-    Note: The --pas argument is deprecated and no longer used. PAS is determined
-    from read cleavage patterns instead.
+    The distance output represents how far each read extends from its 5' start
+    to the PAS position, with intron lengths subtracted for reads spanning introns.
+
+    Note: The --pas argument specifies the BED file of known PAS regions but no
+    longer forces a single fixed PAS position (which was the original behavior).
 
     All processing is in-memory except temporary files for bedtools (auto-cleaned).
 
@@ -106,9 +123,9 @@ def main(
 
     Example:
 
-        scqpas --bam sample.bam --gtf annotation.gtf --output results.csv
+        scqpas --bam sample.bam --gtf annotation.gtf --pas sites.bed --output results.csv
 
-        scqpas --config custom.yaml --bam sample.bam --gtf annotation.gtf --output results.csv
+        scqpas --config custom.yaml --bam sample.bam --gtf annotation.gtf --pas sites.bed --output results.csv
     """
 
     try:
@@ -119,19 +136,19 @@ def main(
             raise click.ClickException(f"Configuration error: {e}")
 
         # Apply CLI overrides to config values (CLI args take precedence)
-        if output is None:
-            output = config_manager.get(
-                "output", "default_output_file", "distances.csv"
-            )
-
         if percentage_threshold is None:
             percentage_threshold = config_manager.get(
-                "polya_detection", "percentage_threshold", 80
+                "polya_detection", "percentage_threshold"
             )
 
         if length_threshold is None:
             length_threshold = config_manager.get(
-                "polya_detection", "length_threshold", 5
+                "polya_detection", "length_threshold"
+            )
+
+        if terminal_exon_extension is None:
+            terminal_exon_extension = config_manager.get(
+                "annotation", "terminal_exon_extension"
             )
 
         if log_level is None:
@@ -139,6 +156,9 @@ def main(
 
         if log_file is None:
             log_file = config_manager.get("logging", "default_file", "scqpas.log")
+
+        if output is None:
+            output = config_manager.get("output", "default_output_file", "distances.csv")
 
         # Configure logging based on user's options
         log_level_int = getattr(logging, log_level.upper())
@@ -153,7 +173,9 @@ def main(
             output_path=output,
             percentage_threshold=percentage_threshold,
             length_threshold=length_threshold,
+            terminal_exon_extension=terminal_exon_extension,
             config_manager=config_manager,
+            debug_output_dir=debug_output,
         )
 
     except click.ClickException:

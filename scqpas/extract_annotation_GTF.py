@@ -9,18 +9,37 @@ from .config_manager import ConfigManager
 logger = logging.getLogger(__name__)
 
 
-def extract_exons(
-    gtf_file_path: str,
-    exons_output: Optional[str] = None,
-    config_manager: Optional[ConfigManager] = None,
-) -> pd.DataFrame:
+def load_gtf(gtf_file_path: str) -> pd.DataFrame:
     """
-    Extract exons from a GTF file.
+    Load a GTF file into memory with standard column names.
 
     Parameters
     ----------
     gtf_file_path : str
         Path to GTF file
+
+    Returns
+    -------
+    pd.DataFrame
+        GTF DataFrame with named columns: seqname, source, feature, start, end, score, strand, frame, attribute
+    """
+    gtf = pd.read_csv(gtf_file_path, sep="\t", comment="#", header=None)
+    gtf.columns = ["seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
+    return gtf
+
+
+def extract_exons(
+    gtf_input: Union[str, pd.DataFrame],
+    exons_output: Optional[str] = None,
+    config_manager: Optional[ConfigManager] = None,
+) -> pd.DataFrame:
+    """
+    Extract exons from a GTF file or DataFrame.
+
+    Parameters
+    ----------
+    gtf_input : str or pd.DataFrame
+        Path to GTF file or GTF DataFrame. If string, reads from file. If DataFrame, uses directly.
     exons_output : str, optional
         Path to output BED file. If None, returns DataFrame only (in-memory).
     config_manager : ConfigManager, optional
@@ -31,12 +50,17 @@ def extract_exons(
     pd.DataFrame
         Exons with columns: chr, start, end, transcript_id, strand, gene_id
     """
-
-    gtf_df = pd.read_csv(gtf_file_path, sep="\t", comment="#", header=None)
-    exons = gtf_df[gtf_df[2] == "exon"]
-    exons = exons[
-        [0, 3, 4, 8, 6]
-    ].copy()  # 0: chromosome, 3: start, 4: end, 6: strand, 8: attributes
+    # Load GTF if path is provided, otherwise use DataFrame directly
+    if isinstance(gtf_input, str):
+        gtf_df = load_gtf(gtf_input)
+    else:
+        gtf_df = gtf_input
+    
+    # Ensure named columns if not already set
+    if not hasattr(gtf_df, 'columns') or len(gtf_df.columns) == 0 or gtf_df.columns[0] == 0:
+        gtf_df.columns = ["seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
+    
+    exons = gtf_df[gtf_df["feature"] == "exon"][["seqname", "start", "end", "attribute", "strand"]]
     exons.columns = ["chr", "start", "end", "attributes", "strand"]
     exons["start"] = exons["start"] - 1  # Convert start to 0-based
     exons["transcript_id"] = exons["attributes"].str.extract(
@@ -44,16 +68,18 @@ def extract_exons(
     )
     exons["gene_id"] = exons["attributes"].str.extract(r'gene_id\s+"([^"]+)"')
     exons.drop(columns="attributes", inplace=True)
-    exons = exons[["chr", "start", "end", "transcript_id", "strand", "gene_id"]]
+
+    # Get bedtools score from config
+    if config_manager is None:
+        config_manager = ConfigManager()
+    bedtools_score = config_manager.get("output", "bedtools_score")
+
+    exons["dummy"] = bedtools_score
+    # Final reordering - single operation to avoid intermediate DFs
+    exons = exons[["chr", "start", "end", "transcript_id", "dummy", "strand", "gene_id"]]
 
     if exons_output is not None:
-        exons.to_csv(
-            exons_output,
-            sep="\t",
-            header=False,
-            index=False,
-            columns=["chr", "start", "end", "transcript_id", "strand", "gene_id"],
-        )
+        exons.to_csv(exons_output, sep="\t", header=False, index=False)
 
     return exons
 
@@ -118,26 +144,127 @@ def calculate_introns(
     return introns_df
 
 
-def get_bed_from_df(
-    df_input: Union[pd.DataFrame, str],
-    cpa_site: int,
-    bed_output: Optional[str] = None,
-    chr: Optional[str] = None,
+def extract_genes(
+    gtf_input: Union[str, pd.DataFrame],
+    genes_output: Optional[str] = None,
     config_manager: Optional[ConfigManager] = None,
 ) -> pd.DataFrame:
     """
-    Create BED format for reads with PAS-specific coordinate adjustment.
+    Extract genes from a GTF file or DataFrame.
 
     Parameters
     ----------
-    df_input : pd.DataFrame or str
-        Reads DataFrame or path to CSV file with columns: chr, start, end, strand, read_id
-    cpa_site : int
-        Cleavage/polyadenylation site position (genomic coordinate)
+    gtf_input : str or pd.DataFrame
+        Path to GTF file or GTF DataFrame. If string, reads from file. If DataFrame, uses directly.
+    genes_output : str, optional
+        Path to output BED file. If None, returns DataFrame only (in-memory).
+    config_manager : ConfigManager, optional
+        Configuration manager (not currently used by this function)
+
+    Returns
+    -------
+    pd.DataFrame
+        Genes with columns: chr, start, end, gene_id, strand
+    """
+    # Load GTF if path is provided, otherwise use DataFrame directly
+    if isinstance(gtf_input, str):
+        gtf_df = load_gtf(gtf_input)
+    else:
+        gtf_df = gtf_input
+    
+    # Ensure named columns if not already set
+    if not hasattr(gtf_df, 'columns') or len(gtf_df.columns) == 0 or gtf_df.columns[0] == 0:
+        gtf_df.columns = ["seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
+    
+    genes = gtf_df[gtf_df["feature"] == "gene"][["seqname", "start", "end", "attribute", "strand"]]
+    genes.columns = ["chr", "start", "end", "attributes", "strand"]
+    genes["start"] = genes["start"] - 1  # Convert start to 0-based
+    genes["gene_id"] = genes["attributes"].str.extract(r'gene_id\s+"([^"]+)"')
+    genes.drop(columns="attributes", inplace=True)
+
+    # Get bedtools score from config
+    if config_manager is None:
+        config_manager = ConfigManager()
+    bedtools_score = config_manager.get("output", "bedtools_score")
+
+    genes["dummy"] = bedtools_score
+    # Final reordering - single operation to avoid intermediate DFs
+    genes = genes[["chr", "start", "end", "gene_id", "dummy", "strand"]]
+
+    if genes_output is not None:
+        genes.to_csv(genes_output, sep="\t", header=False, index=False)
+
+    return genes
+
+
+def extract_transcripts(
+    gtf_input: Union[str, pd.DataFrame],
+    transcripts_output: Optional[str] = None,
+    config_manager: Optional[ConfigManager] = None,
+) -> pd.DataFrame:
+    """
+    Extract transcripts from a GTF file or DataFrame.
+
+    Parameters
+    ----------
+    gtf_input : str or pd.DataFrame
+        Path to GTF file or GTF DataFrame. If string, reads from file. If DataFrame, uses directly.
+    transcripts_output : str, optional
+        Path to output BED file. If None, returns DataFrame only (in-memory).
+    config_manager : ConfigManager, optional
+        Configuration manager (not currently used by this function)
+
+    Returns
+    -------
+    pd.DataFrame
+        Transcripts with columns: chr, start, end, transcript_id, strand
+    """
+    # Load GTF if path is provided, otherwise use DataFrame directly
+    if isinstance(gtf_input, str):
+        gtf_df = load_gtf(gtf_input)
+    else:
+        gtf_df = gtf_input
+    
+    # Ensure named columns if not already set
+    if not hasattr(gtf_df, 'columns') or len(gtf_df.columns) == 0 or gtf_df.columns[0] == 0:
+        gtf_df.columns = ["seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
+    
+    transcripts = gtf_df[gtf_df["feature"] == "transcript"][["seqname", "start", "end", "attribute", "strand"]]
+    transcripts.columns = ["chr", "start", "end", "attributes", "strand"]
+    transcripts["start"] = transcripts["start"] - 1  # Convert start to 0-based
+    transcripts["transcript_id"] = transcripts["attributes"].str.extract(r'transcript_id\s+"([^"]+)"')
+    transcripts["gene_id"] = transcripts["attributes"].str.extract(r'gene_id\s+"([^"]+)"')
+    transcripts.drop(columns="attributes", inplace=True)
+
+    # Get bedtools score from config
+    if config_manager is None:
+        config_manager = ConfigManager()
+    bedtools_score = config_manager.get("output", "bedtools_score")
+
+    transcripts["dummy"] = bedtools_score
+    # Final reordering - single operation to avoid intermediate DFs
+    transcripts = transcripts[["chr", "start", "end", "transcript_id", "dummy", "strand", "gene_id"]]
+
+    if transcripts_output is not None:
+        transcripts.to_csv(transcripts_output, sep="\t", header=False, index=False)
+
+    return transcripts
+
+
+def reads_to_bed(
+    df_input: pd.DataFrame,
+    bed_output: Optional[str] = None,
+    config_manager: Optional[ConfigManager] = None,
+) -> pd.DataFrame:
+    """
+    Convert reads DataFrame to BED format.
+
+    Parameters
+    ----------
+    df_input : pd.DataFrame
+        Reads DataFrame with columns: chr, start, end, read_id, strand
     bed_output : str, optional
         Path to output BED file. If None, returns DataFrame only (in-memory).
-    chr : str, optional
-        Target chromosome (e.g., 'chr12'). If None, processes all chromosomes. Default: None
     config_manager : ConfigManager, optional
         Configuration manager for accessing bedtools_score setting. Default: None
 
@@ -145,102 +272,24 @@ def get_bed_from_df(
     -------
     pd.DataFrame
         BED format DataFrame with columns: chr, start, end, read_id, dummy, strand
-
-    Notes
-    -----
-    For strand-specific coordinate adjustment:
-    - Forward strand: Use region from read start to PAS position
-    - Reverse strand: Use region from PAS position to read end
-    The dummy column is populated with bedtools_score from config (default: 1000)
     """
-    # Handle both DataFrame and file path inputs
-    if isinstance(df_input, str):
-        df = pd.read_csv(df_input, sep=",")
-    else:
-        df = df_input.copy()
-
-    bed = []
-
-    for idx, row in df.iterrows():
-        # If chr is specified, filter by chromosome; otherwise process all
-        chr_match = (row["chr"] == chr) if chr is not None else True
-        
-        if row["strand"] == "+" and chr_match:
-            start = row["start"]
-            end = cpa_site + 1  # BED end is exclusive
-        elif row["strand"] == "-" and chr_match:
-            start = cpa_site  # BED start is inclusive
-            end = row["end"]
-        else:
-            continue  # Skip rows with an undefined strand
-
-        if start < end:
-            bed.append([row["chr"], start, end, row["read_id"], row["strand"]])
-
-    bed_df = pd.DataFrame(bed, columns=["chr", "start", "end", "read_id", "strand"])
-
-    # Get bedtools score from config with fallback to default
-    if config_manager:
-        bedtools_score = config_manager.get("output", "bedtools_score", 1000)
-    else:
-        bedtools_score = 1000
-
-    bed_df.insert(4, "dummy", bedtools_score)
-
+    df = df_input.copy()
+    
+    # Convert start to 0-based coordinates for BED format
+    df["start"] = df["start"] - 1
+    
+    # Get bedtools score from config
+    if config_manager is None:
+        config_manager = ConfigManager()
+    bedtools_score = config_manager.get("output", "bedtools_score")
+    
+    # Add dummy score column
+    df["dummy"] = bedtools_score
+    
+    # Reorder columns to BED format
+    df = df[["chr", "start", "end", "read_id", "dummy", "strand"]]
+    
     if bed_output is not None:
-        bed_df.to_csv(bed_output, sep="\t", header=False, index=False)
-
-    return bed_df
-
-
-def extract_genes(
-    gtf_file_path: str,
-    genes_output: Optional[str] = None,
-    config_manager: Optional[ConfigManager] = None,
-) -> pd.DataFrame:
-    """
-    Extract genes from a GTF file.
-
-    Parameters
-    ----------
-    gtf_file_path : str
-        Path to GTF file
-    genes_output : str, optional
-        Path to output BED file. If None, returns DataFrame only (in-memory).
-    config_manager : ConfigManager, optional
-        Configuration manager for accessing bedtools_score setting. Default: None
-
-    Returns
-    -------
-    pd.DataFrame
-        Genes with columns: chr, start, end, gene_id, dummy, strand
-        The dummy column is populated with bedtools_score from config (default: 1000)
-    """
-
-    gtf_df = pd.read_csv(gtf_file_path, sep="\t", comment="#", header=None)
-    genes = gtf_df[gtf_df[2] == "gene"]
-    genes = genes[[0, 3, 4, 8, 6]].copy()
-    genes.columns = ["chr", "start", "end", "attributes", "strand"]
-    genes["start"] = genes["start"] - 1
-    genes["gene_id"] = genes["attributes"].str.extract(r'gene_id\s+"([^"]+)"')
-    genes.drop(columns="attributes", inplace=True)
-    genes = genes[["chr", "start", "end", "gene_id", "strand"]]
-
-    # Get bedtools score from config with fallback to default
-    if config_manager:
-        bedtools_score = config_manager.get("output", "bedtools_score", 1000)
-    else:
-        bedtools_score = 1000
-
-    genes.insert(4, "dummy", bedtools_score)
-
-    if genes_output is not None:
-        genes.to_csv(
-            genes_output,
-            sep="\t",
-            header=False,
-            index=False,
-            columns=["chr", "start", "end", "gene_id", "dummy", "strand"],
-        )
-
-    return genes
+        df.to_csv(bed_output, sep="\t", header=False, index=False)
+    
+    return df

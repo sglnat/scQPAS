@@ -22,6 +22,7 @@ def run_bedtools_intersect(
     name_a: str = "a",
     name_b: str = "b",
     flags: Optional[List[str]] = None,
+    output_bed: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Run bedtools intersect with flexible flags.
@@ -39,6 +40,8 @@ def run_bedtools_intersect(
     flags : list, optional
         bedtools flags (e.g., ['-wa', '-s', '-f', '1.0'])
         Default: ['-wo'] (write overlapping positions from both)
+    output_bed : str, optional
+        Path to output BED file. If None, returns DataFrame only (in-memory).
 
     Returns
     -------
@@ -70,9 +73,19 @@ def run_bedtools_intersect(
         if result.stdout.strip():
             with open(output_path, "w") as f:
                 f.write(result.stdout)
-            return pd.read_csv(output_path, sep="\t", header=None)
+            result_df = pd.read_csv(output_path, sep="\t", header=None)
+            
+            # Save to debug output path if specified
+            if output_bed is not None:
+                result_df.to_csv(output_bed, sep="\t", header=False, index=False)
+            
+            return result_df
         else:
-            return pd.DataFrame()
+            result_df = pd.DataFrame()
+            # Save empty DataFrame if output_bed specified
+            if output_bed is not None:
+                result_df.to_csv(output_bed, sep="\t", header=False, index=False)
+            return result_df
     except FileNotFoundError:
         raise FileNotFoundError(
             "bedtools not found. Please install bedtools: conda install -c bioconda bedtools"

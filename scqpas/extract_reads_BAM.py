@@ -14,6 +14,7 @@ def extract_reads(
     percentage_threshold: int,
     length_threshold: int,
     config_manager: Optional[ConfigManager] = None,
+    reads_output: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Extract reads from BAM file and identify polyA-containing reads.
@@ -31,6 +32,8 @@ def extract_reads(
         Minimum length of polyA tail in base pairs
     config_manager : ConfigManager, optional
         Configuration manager for accessing pipeline settings
+    reads_output : str, optional
+        Path to output CSV file. If None, returns DataFrame only (in-memory).
 
     Returns
     -------
@@ -107,10 +110,20 @@ def extract_reads(
         ],
     )  # , index = read_ids)
 
+    # Drop reads without valid UMI or CB (required for read set assignment)
+    # These reads can't be properly grouped and cause index corruption
+    df = df.dropna(subset=["UMI", "CB"]).reset_index(drop=True)
+
     # assign reads to read sets
     df = get_readsets(df)
+    
+    # Reset index after merge and drop any remaining NaN rows
+    df = df.reset_index(drop=True).dropna(subset=["is_polyA_RS"]).reset_index(drop=True)
 
     # df.index = read_ids
+
+    if reads_output is not None:
+        df.to_csv(reads_output, index=False)
 
     return df
 
@@ -303,6 +316,6 @@ def get_readsets(df: pd.DataFrame) -> pd.DataFrame:
     polyA_status = grouped["is_polyA"].any().reset_index()
     polyA_status.rename(columns={"is_polyA": "is_polyA_RS"}, inplace=True)
 
-    df = df.merge(polyA_status, on=["UMI", "CB"], how="left")
+    df = df.merge(polyA_status, on=["UMI", "CB"], how="left").reset_index(drop=True)
 
     return df

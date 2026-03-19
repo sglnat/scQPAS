@@ -26,6 +26,13 @@ polya_detection:
   # Default: false
   use_fixed_coordinates: false
 
+# Annotation processing parameters
+annotation:
+  # Length in base pairs to extend terminal exons in 3' direction
+  # Used to capture extended 3' UTR regions and identify PAS
+  # Default: 1000 (1 kb extension)
+  terminal_exon_extension: 1000
+
 # Output and formatting
 output:
   # Default output filename (can be overridden via CLI --output)
