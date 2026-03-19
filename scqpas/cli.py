@@ -67,6 +67,18 @@ logger = logging.getLogger(__name__)
     help="Length in bp to extend terminal exons for PAS capture. [default: 1000 from config]",
 )
 @click.option(
+    "--stringency",
+    type=int,
+    default=None,
+    help="Minimum stringency level for PAS from sc PolyASite Atlas. [default: 80 from config]",
+)
+@click.option(
+    "--region",
+    type=str,
+    default=None,
+    help="Optional genomic region for PAS filtering (e.g., 'chr12:15671-26783' or 'chr12'). If not provided, all PAS are used.",
+)
+@click.option(
     "--log-level",
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
     default=None,
@@ -93,6 +105,8 @@ def main(
     percentage_threshold: Optional[int],
     length_threshold: Optional[int],
     terminal_exon_extension: Optional[int],
+    stringency: Optional[int],
+    region: Optional[str],
     log_level: Optional[str],
     log_file: Optional[str],
     debug_output: Optional[str],
@@ -151,6 +165,11 @@ def main(
                 "annotation", "terminal_exon_extension"
             )
 
+        if stringency is None:
+            stringency = config_manager.get(
+                "pas_filtering", "stringency"
+            )
+
         if log_level is None:
             log_level = config_manager.get("logging", "default_level", "INFO")
 
@@ -174,6 +193,8 @@ def main(
             percentage_threshold=percentage_threshold,
             length_threshold=length_threshold,
             terminal_exon_extension=terminal_exon_extension,
+            stringency=stringency,
+            region=region,
             config_manager=config_manager,
             debug_output_dir=debug_output,
         )

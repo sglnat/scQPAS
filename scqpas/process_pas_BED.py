@@ -192,24 +192,53 @@ def get_adj_gtf(input_file, output_file: Optional[str] = None, extension_length:
     return adjusted_gtf
 
 
-def load_pas(pas_file_path: str) -> pd.DataFrame:
+def load_pas(pas_file_path: str, stringency: int, region: Optional[str] = None) -> pd.DataFrame:
     """
-    Load a PAS BED file into memory.
+    Load a PAS BED file into memory with optional coordinate filtering.
 
     Parameters
     ----------
     pas_file_path : str
         Path to PAS BED file
+    stringency : int
+        Minimum stringency level for PAS. Only PAS with stringency >= this value will be retained.
+    region : str, optional
+        Optional genomic region for filtering in format "chr:start-end" (e.g., "chr12:15671-26783")
+        or just chromosome (e.g., "chr12"). If None, no coordinate filtering is applied.
+        Default: None (loads entire file)
 
     Returns
     -------
     pd.DataFrame
-        PAS DataFrame with columns: 0-5 (standard BED columns)
-        col 3: 1-based PAS_id, col 4: gene-expression (RPM)
+        PAS DataFrame with columns: chr, start, end, pas_id, gex, strand
+        Filtered by stringency and optionally by region coordinates.
     """
 
     pas = pd.read_csv(pas_file_path, sep="\t", header=None)
     pas.columns = ["chr", "start", "end", "pas_id", "gex", "strand", "tissues", "protocols", "stringency", "gen_class", "polyA_signal"]
+    pas = pas[pas["stringency"] >= stringency]
+    
+    # Optional region-based filtering
+    if region is not None:
+        # Parse region string
+        if ":" in region:
+            # Format: "chr12:15671-26783"
+            chr_part, coord_part = region.split(":")
+            start_coord, end_coord = coord_part.split("-")
+            start_coord = int(start_coord)
+            end_coord = int(end_coord)
+        else:
+            # Format: "chr12" (chromosome only)
+            chr_part = region
+            start_coord = None
+            end_coord = None
+        
+        # Filter by chromosome
+        pas = pas[pas["chr"] == chr_part]
+        
+        # Filter by coordinates if provided
+        if start_coord is not None and end_coord is not None:
+            pas = pas[(pas["start"] >= start_coord) & (pas["end"] <= end_coord)]
 
     return pas[["chr", "start", "end", "pas_id", "gex", "strand"]]
 

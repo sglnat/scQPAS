@@ -33,6 +33,13 @@ annotation:
   # Default: 1000 (1 kb extension)
   terminal_exon_extension: 1000
 
+# PAS filtering parameters
+pas_filtering:
+  # Minimum stringency level for PAS from sc PolyASite Atlas
+  # Only PAS with stringency >= this value will be retained
+  # Default: 80
+  stringency: 80
+
 # Output and formatting
 output:
   # Default output filename (can be overridden via CLI --output)

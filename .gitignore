@@ -55,6 +55,7 @@ timeline-*
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 *.nb.html
+*.ipynb
 
 # OS
 .DS_Store

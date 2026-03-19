@@ -1,11 +1,20 @@
+import gc
 import logging
 from typing import Optional, Union
 
 import pandas as pd
 import numpy as np
 import re
+import psutil
+import os
 
 logger = logging.getLogger(__name__)
+
+
+def get_memory_usage():
+    """Get current memory usage in MB"""
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / 1024 / 1024  # Convert to MB
 
 
 def get_cigar_bed(df_input: Union[pd.DataFrame, str], bed_output: Optional[str] = None) -> pd.DataFrame:
@@ -118,6 +127,9 @@ def filter_by_cigar(
     # Split intronic_reads by CIGAR N content
     intronic_noN = intronic_reads[intronic_reads["read_id"].isin(reads_without_N_set)].copy()
     intronic_reads_with_N = intronic_reads[intronic_reads["read_id"].isin(reads_with_N_set)].copy()
+    
+    mem_mb = get_memory_usage()
+    logger.info(f"[STEP 1] Split reads by CIGAR N: {len(intronic_reads_with_N)} with N, {len(intronic_noN)} without N | Memory: {mem_mb:.1f} MB")
 
     # ========== STEP 2: BUILD CIGAR INTRON DICTIONARY (by read_id) ==========
     # Extract CIGAR-derived introns grouped by read_id
@@ -127,6 +139,9 @@ def filter_by_cigar(
     cigar_by_read = {}
     for read_id, group in cigar_df.groupby("read_id"):
         cigar_by_read[read_id] = set(zip(group["start"], group["end"]))
+    
+    mem_mb = get_memory_usage()
+    logger.info(f"[STEP 2] Built CIGAR dictionary: {len(cigar_by_read)} reads | Memory: {mem_mb:.1f} MB")
     
     # ========== STEP 3: BUILD ANNOTATED INTRON DICTIONARY (by read_id, transcript_id) ==========
     # For CIGAR validation, we need to check: does this read's CIGAR match the annotation
@@ -147,6 +162,9 @@ def filter_by_cigar(
     # Every (read_id, transcript_id) pair maps to exactly one rs_id (read sets don't split)
     # Use .first() to get first occurrence (all are identical for that pair)
     read_tx_to_rs = intronic_reads_with_N.groupby(["read_id", "transcript_id"])["rs_id"].first().to_dict()
+    
+    mem_mb = get_memory_usage()
+    logger.info(f"[STEP 3] Built annotated dictionary: {len(annotated_by_combo)} combos | Memory: {mem_mb:.1f} MB")
 
     # ========== STEP 4: VALIDATE CIGAR INTRONS MATCH ANNOTATION ==========
     # For each (read_id, transcript_id) combo (deduplicated):
@@ -167,6 +185,9 @@ def filter_by_cigar(
             # Remove the entire (rs_id, transcript_id) pair from consideration
             rejected_rs_transcript.add((rs_id, transcript_id))
     
+    mem_mb = get_memory_usage()
+    logger.info(f"[STEP 4] Validated CIGAR introns: {len(rejected_rs_transcript)} (rs_id, tx_id) pairs rejected | Memory: {mem_mb:.1f} MB")
+    
     # ========== STEP 5: FILTER OUT INVALID (rs_id, transcript_id) PAIRS ==========
     # Remove all rows where (rs_id, transcript_id) pair was rejected
     # This means ALL reads from this read set (rs_id) are removed for this transcript
@@ -185,32 +206,47 @@ def filter_by_cigar(
             indicator=True
         )
         # Keep only rows NOT in rejected_df (left_only = in intronic_reads_with_N but not in rejected_df)
-        intronic_reads_with_N = intronic_reads_with_N[merged["_merge"] == "left_only"].copy()
+        intronic_reads_with_N = merged[merged["_merge"] == "left_only"].drop(columns=["_merge"]).copy()
         del merged  # Free memory
+    
+    mem_mb = get_memory_usage()
+    logger.info(f"[STEP 5] Filtered invalid pairs: {len(intronic_reads_with_N)} rows retained | Memory: {mem_mb:.1f} MB")
 
     # ========== STEP 6: PREPARE intronic_N (READS WITH N THAT PASSED VALIDATION) ==========
     # Extract unique (read_id, transcript_id, pas_id, rs_id) from validated reads
+    # KEEP COORDINATES: chr_read, start_read, end_read, strand
     # Add flags: intronic=True (these reads overlap introns), CIGAR_N=True (they have splicing)
     
     if not intronic_reads_with_N.empty:
-        intronic_N = intronic_reads_with_N[["read_id", "transcript_id", "pas_id", "rs_id"]].drop_duplicates()
+        intronic_N = intronic_reads_with_N[["read_id", "transcript_id", "pas_id", "rs_id", "chr_read", "start_read", "end_read", "strand"]].drop_duplicates()
         intronic_N["intronic"] = True
         intronic_N["CIGAR_N"] = True
     else:
-        intronic_N = pd.DataFrame(columns=["read_id", "transcript_id", "pas_id", "rs_id", "intronic", "CIGAR_N"])
+        intronic_N = pd.DataFrame(columns=["read_id", "transcript_id", "pas_id", "rs_id", "chr_read", "start_read", "end_read", "strand", "intronic", "CIGAR_N"])
+    
+    mem_mb = get_memory_usage()
+    logger.info(f"[STEP 6] Prepared intronic_N: {len(intronic_N)} rows | Memory: {mem_mb:.1f} MB")
 
     # ========== STEP 7: PREPARE intronic_noN (READS WITHOUT N) ==========
     # These reads have no splice junctions, so no CIGAR validation needed
     # They automatically pass because they're in intronic_reads (overlapping annotation)
+    # KEEP COORDINATES: chr_read, start_read, end_read, strand
     # Flag: intronic=True (overlap with introns), CIGAR_N=False (no splicing)
     
     if not intronic_noN.empty:
-        intronic_noN = intronic_noN[["read_id", "transcript_id", "pas_id", "rs_id"]].drop_duplicates()
-        intronic_noN["intronic"] = True
-        intronic_noN["CIGAR_N"] = False
+        intronic_noN_small = intronic_noN[["read_id", "transcript_id", "pas_id", "rs_id", "chr_read", "start_read", "end_read", "strand"]].drop_duplicates()
+        intronic_noN_small["intronic"] = True
+        intronic_noN_small["CIGAR_N"] = False
     else:
-        intronic_noN = pd.DataFrame(columns=["read_id", "transcript_id", "pas_id", "rs_id", "intronic", "CIGAR_N"])
+        intronic_noN_small = pd.DataFrame(columns=["read_id", "transcript_id", "pas_id", "rs_id", "chr_read", "start_read", "end_read", "strand", "intronic", "CIGAR_N"])
 
+    # DELETE large intronic_reads_with_N and intronic_noN - no longer needed
+    del intronic_reads_with_N, intronic_noN
+    gc.collect()  # Force garbage collection to free memory
+    
+    mem_mb = get_memory_usage()
+    logger.info(f"[STEP 7] Prepared intronic_noN: {len(intronic_noN_small)} rows | Memory: {mem_mb:.1f} MB")
+    
     # ========== STEP 8: HANDLE READS CLOSE TO CLEAVAGE SITE ==========
     # Find reads in filtered_reads that:
     # 1. Are NOT already in intronic_reads (not counted as intronic)
@@ -221,20 +257,10 @@ def filter_by_cigar(
     
     if filtered_reads is not None and not filtered_reads.empty:
         # Build DataFrame of (read_id, rs_id, transcript_id) from intronic reads for efficient anti-join
-        intronic_combos_df = pd.DataFrame()
-        if not intronic_reads_with_N.empty:
-            intronic_combos_df = pd.concat([
-                intronic_combos_df,
-                intronic_reads_with_N[["read_id", "rs_id", "transcript_id"]]
-            ], ignore_index=True)
-        if not intronic_noN.empty:
-            intronic_combos_df = pd.concat([
-                intronic_combos_df,
-                intronic_noN[["read_id", "rs_id", "transcript_id"]]
-            ], ignore_index=True)
-        
-        if not intronic_combos_df.empty:
-            intronic_combos_df["_intronic"] = True
+        # Use already-extracted and deduplicated intronic_N and intronic_noN_small (4 columns each)
+        intronic_combos_df = pd.concat([intronic_N, intronic_noN_small], ignore_index=True)
+        intronic_combos_df = intronic_combos_df[["read_id", "rs_id", "transcript_id"]].copy()
+        intronic_combos_df["_intronic"] = True
         
         # Left merge: identifies reads that are in filtered_reads but NOT in intronic_reads
         merged = filtered_reads.merge(
@@ -243,7 +269,9 @@ def filter_by_cigar(
             how="left"
         )
         # Keep rows where _intronic is NaN (not in intronic reads)
-        not_intronic = merged[merged["_intronic"].isna()].index
+        not_intronic_df = merged[merged["_intronic"].isna()].drop(columns=["_intronic"]).copy()
+        del merged, intronic_combos_df  # Free memory immediately
+        gc.collect()
         
         # Also exclude rows where (rs_id, transcript_id) was rejected
         if rejected_rs_transcript:
@@ -251,41 +279,51 @@ def filter_by_cigar(
                 list(rejected_rs_transcript),
                 columns=["rs_id", "transcript_id"]
             )
-            merged2 = filtered_reads.loc[not_intronic].merge(
+            merged2 = not_intronic_df.merge(
                 rejected_df,
                 on=["rs_id", "transcript_id"],
                 how="left",
                 indicator=True
             )
-            not_rejected_mask = merged2["_merge"] == "left_only"
-            close_reads_slice = filtered_reads.loc[not_intronic][not_rejected_mask]
+            # Keep rows NOT in rejected_df (left_only)
+            close_reads_slice = merged2[merged2["_merge"] == "left_only"].drop(columns=["_merge"])
+            del merged2, not_intronic_df  # Free memory immediately
+            gc.collect()
         else:
-            close_reads_slice = filtered_reads.loc[not_intronic]
+            close_reads_slice = not_intronic_df
         
         if not close_reads_slice.empty:
-            close_reads_df = close_reads_slice[["read_id", "transcript_id", "pas_id", "rs_id"]].drop_duplicates()
+            close_reads_df = close_reads_slice[["read_id", "transcript_id", "pas_id", "rs_id", "chr_read", "start_read", "end_read", "strand"]].drop_duplicates()
             close_reads_df = close_reads_df.copy()  # Avoid SettingWithCopyWarning
             close_reads_df["intronic"] = False
             close_reads_df["CIGAR_N"] = False
+        
+        del close_reads_slice
+        gc.collect()
+    
+    mem_mb = get_memory_usage()
+    logger.info(f"[STEP 8] Handled close reads: {len(close_reads_df) if not close_reads_df.empty else 0} rows | Memory: {mem_mb:.1f} MB")
 
     # ========== STEP 9: COMBINE AND RETURN ==========
-    # Concatenate all valid reads: intronic_N, intronic_noN, close_reads
+    # Concatenate all valid reads: intronic_N, intronic_noN_small, close_reads
     # Merge with filtered_reads to get genomic coordinates
     
-    final_reads = pd.concat([intronic_N, intronic_noN, close_reads_df], ignore_index=True)
+    final_reads = pd.concat([intronic_N, intronic_noN_small, close_reads_df], ignore_index=True)
     
-    # Clean up large intermediate DataFrames no longer needed
-    del cigar_by_read, annotated_by_combo, intronic_reads_with_N, intronic_noN, intronic_N, close_reads_df
+    # Clean up all intermediate DataFrames no longer needed
+    del cigar_by_read, annotated_by_combo, intronic_N, intronic_noN_small, close_reads_df
+    gc.collect()  # Force garbage collection before final merge
     
-    if not final_reads.empty:
-        # Merge with filtered_reads to get chr_read, start_read, end_read, strand info
-        final_reads = final_reads.merge(
-            filtered_reads[["read_id", "chr_read", "start_read", "end_read", "strand"]],
-            on="read_id",
-            how="left",
-        )
+    mem_mb = get_memory_usage()
+    logger.info(f"[STEP 9] Combined reads: {len(final_reads)} total rows | Memory: {mem_mb:.1f} MB")
+    
+    # Coordinates (chr_read, start_read, end_read, strand) are already in final_reads from steps 6-8
+    # No additional merge needed - already preserved throughout pipeline
     
     if output_csv is not None:
         final_reads.to_csv(output_csv, sep="\t", index=False)
+    
+    mem_mb = get_memory_usage()
+    logger.info(f"[FINAL] filter_by_cigar completed: {len(final_reads)} reads returned | Memory: {mem_mb:.1f} MB")
 
     return final_reads

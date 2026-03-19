@@ -146,9 +146,6 @@ def best_cpa(
     return (best_chr, best_pos, best_strand)
 
 
-
-
-
 def calculate_distances(
     valid_reads: pd.DataFrame, intronic_reads: pd.DataFrame, output_csv: Optional[str] = None
 ) -> pd.DataFrame:

@@ -41,6 +41,8 @@ def run_pipeline(
     percentage_threshold: Optional[int] = None,
     length_threshold: Optional[int] = None,
     terminal_exon_extension: Optional[int] = None,
+    stringency: Optional[int] = None,
+    region: Optional[str] = None,
     config_manager: Optional[ConfigManager] = None,
     debug_output_dir: Optional[str] = None,
 ) -> pd.DataFrame:
@@ -80,6 +82,14 @@ def run_pipeline(
     terminal_exon_extension : int, optional
         Length in base pairs to extend terminal exons for PAS capture.
         If None, retrieved from config. Default config: 1000
+    stringency : int, optional
+        Minimum stringency level for PAS from sc PolyASite Atlas.
+        Only PAS with stringency >= this value will be retained.
+        If None, retrieved from config. Default config: 80
+    region : str, optional
+        Optional genomic region for PAS filtering in format "chr:start-end" (e.g., "chr12:15671-26783")
+        or just chromosome (e.g., "chr12"). If None, no coordinate filtering applied.
+        Default: None (loads entire PAS file)
     config_manager : ConfigManager, optional
         ConfigManager instance for accessing pipeline configuration. Default: None
     debug_output_dir : str, optional
@@ -123,6 +133,16 @@ def run_pipeline(
             )
         length_threshold = config_manager.get(
             "polya_detection", "length_threshold"
+        )
+
+    if stringency is None:
+        if config_manager is None:
+            raise ValueError(
+                "ConfigManager is required when stringency is None. "
+                "Either provide stringency explicitly or pass config_manager."
+            )
+        stringency = config_manager.get(
+            "pas_filtering", "stringency"
         )
 
     if output_path is None:
@@ -247,11 +267,10 @@ def run_pipeline(
             logger.info(f"      ✓ Extracted {len(transcripts_adj)} adjusted transcripts (terminal exons extended by {terminal_exon_extension}bp)")
 
             # Load PAS bed file from sc PolyASite Atlas v3.0
-            pas_df = load_pas(pas_bed_path)
+            pas_df = load_pas(pas_bed_path, stringency, region=region)
             logger.info(f"      ✓ Loaded {len(pas_df)} PAS from atlas")
-            
-            pas_df = pas_df[(pas_df["chr"] == "chr12") & (pas_df["start"] >= 6538189) & (pas_df["end"] <= 6538459)]
-            logger.info(f"      ✓ Filtered to {len(pas_df)} PAS in test region (chr12:6538189-6538459)")
+            if region is not None:
+                logger.info(f"      ✓ Filtered to {len(pas_df)} PAS in region {region}")
 
             # Intersect PAS with adjusted transcripts to assign PAS to transcripts
             pas_transcript_df = run_bedtools_intersect(
