@@ -74,11 +74,11 @@ def run_bedtools_intersect(
             with open(output_path, "w") as f:
                 f.write(result.stdout)
             result_df = pd.read_csv(output_path, sep="\t", header=None)
-            
+
             # Save to debug output path if specified
             if output_bed is not None:
                 result_df.to_csv(output_bed, sep="\t", header=False, index=False)
-            
+
             return result_df
         else:
             result_df = pd.DataFrame()

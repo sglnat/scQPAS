@@ -61,7 +61,7 @@ def extract_reads(
         right_end = tuples[-1]
 
         # Check if the read is polyA
-        is_polyA, len_pA = check_polyA(
+        is_polyA, len_pA = _check_polyA(
             read,
             left_end,
             right_end,
@@ -72,7 +72,7 @@ def extract_reads(
         )
 
         # Update the CPA sites DataFrame
-        cpa_site = get_cpa_sites(is_polyA, end)
+        cpa_site = _get_cpa_sites(is_polyA, end)
 
         # Append the read information
         # read_ids.append(read_id)
@@ -115,8 +115,8 @@ def extract_reads(
     df = df.dropna(subset=["UMI", "CB"]).reset_index(drop=True)
 
     # assign reads to read sets
-    df = get_readsets(df)
-    
+    df = _get_readsets(df)
+
     # Reset index after merge and drop any remaining NaN rows
     df = df.reset_index(drop=True).dropna(subset=["is_polyA_RS"]).reset_index(drop=True)
 
@@ -128,7 +128,7 @@ def extract_reads(
     return df
 
 
-def count_A(sub_sequence: str) -> int:
+def _count_A(sub_sequence: str) -> int:
     """
     Count the number of adenine (A) nucleotides in a sequence.
 
@@ -148,7 +148,7 @@ def count_A(sub_sequence: str) -> int:
     return number_A
 
 
-def check_polyA(
+def _check_polyA(
     read,
     left_end: Tuple[int, int],
     right_end: Tuple[int, int],
@@ -218,7 +218,7 @@ def check_polyA(
         len_pA = left_end[1]
 
         # you should use num_A not num_T because you use full_sequence rather than fasta.fetch()
-        num_A = count_A(potential_polyA)
+        num_A = _count_A(potential_polyA)
         percentage_A = (num_A / len_pA) * 100
 
         # for softclipped length <= short_polyA_length_cutoff, enforce 100% A requirement
@@ -240,7 +240,7 @@ def check_polyA(
         ]
         len_pA = right_end[1]
 
-        num_A = count_A(potential_polyA)
+        num_A = _count_A(potential_polyA)
         percentage_A = (num_A / len_pA) * 100
 
         # for softclipped length <= short_polyA_length_cutoff, enforce 100% A requirement
@@ -260,7 +260,7 @@ def check_polyA(
         return False, 0
 
 
-def get_cpa_sites(is_polyA: bool, end: int) -> Optional[int]:
+def _get_cpa_sites(is_polyA: bool, end: int) -> Optional[int]:
     """
     Determine the cleavage/polyadenylation site for a read.
 
@@ -292,7 +292,7 @@ def get_cpa_sites(is_polyA: bool, end: int) -> Optional[int]:
     return cpa_site
 
 
-def get_readsets(df: pd.DataFrame) -> pd.DataFrame:
+def _get_readsets(df: pd.DataFrame) -> pd.DataFrame:
     """
     Classify reads into polyA and non-polyA read sets based on UMI/barcode groups.
 

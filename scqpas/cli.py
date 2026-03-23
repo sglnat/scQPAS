@@ -156,9 +156,7 @@ def main(
             )
 
         if length_threshold is None:
-            length_threshold = config_manager.get(
-                "polya_detection", "length_threshold"
-            )
+            length_threshold = config_manager.get("polya_detection", "length_threshold")
 
         if terminal_exon_extension is None:
             terminal_exon_extension = config_manager.get(
@@ -166,9 +164,7 @@ def main(
             )
 
         if stringency is None:
-            stringency = config_manager.get(
-                "pas_filtering", "stringency"
-            )
+            stringency = config_manager.get("pas_filtering", "stringency")
 
         if log_level is None:
             log_level = config_manager.get("logging", "default_level", "INFO")
@@ -177,7 +173,9 @@ def main(
             log_file = config_manager.get("logging", "default_file", "scqpas.log")
 
         if output is None:
-            output = config_manager.get("output", "default_output_file", "distances.csv")
+            output = config_manager.get(
+                "output", "default_output_file", "distances.csv"
+            )
 
         # Configure logging based on user's options
         log_level_int = getattr(logging, log_level.upper())

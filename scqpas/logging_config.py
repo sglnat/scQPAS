@@ -11,7 +11,9 @@ from pathlib import Path
 from typing import Optional
 
 
-def configure_logging(log_level: int = logging.INFO, log_file: Optional[str] = "scqpas.log") -> None:
+def configure_logging(
+    log_level: int = logging.INFO, log_file: Optional[str] = "scqpas.log"
+) -> None:
     """
     Configure logging for the application.
 

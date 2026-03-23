@@ -4,10 +4,12 @@ from typing import Optional, Union
 import pandas as pd
 import numpy as np
 
+from .extract_cigar_BAM import extract_cigar_n_metrics
+
 logger = logging.getLogger(__name__)
 
 
-def df_distances(
+def _df_distances(
     reads_path: str,
     valid_reads_path: str,
     intronic_reads_path: str,
@@ -58,7 +60,7 @@ def df_distances(
     )
     # print(intronic_reads)
     # Determine the best CPA site
-    df_cpa_sites = get_cpa_sites(df)
+    df_cpa_sites = _get_cpa_sites(df)
     # print(df_cpa_sites)
     # best_cpa_site = best_cpa(df_cpa_sites)
     # print('Best CPA site: ' + str(best_cpa_site))
@@ -69,7 +71,7 @@ def df_distances(
 ####### Modify so that it takes multiple CPA sites #######
 
 
-def get_cpa_sites(reads_df: pd.DataFrame) -> pd.DataFrame:
+def _get_cpa_sites(reads_df: pd.DataFrame) -> pd.DataFrame:
     """
     Count occurrences of each cleavage/polyadenylation site by chromosome and strand.
 
@@ -111,7 +113,7 @@ def get_cpa_sites(reads_df: pd.DataFrame) -> pd.DataFrame:
     return cpa_counts
 
 
-def best_cpa(
+def _best_cpa(
     cpa_sites_df: pd.DataFrame,
 ) -> Optional[tuple]:
     """
@@ -147,7 +149,9 @@ def best_cpa(
 
 
 def calculate_distances(
-    valid_reads: pd.DataFrame, intronic_reads: pd.DataFrame, output_csv: Optional[str] = None
+    valid_reads: pd.DataFrame,
+    intronic_reads: pd.DataFrame,
+    output_csv: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Calculate distances from read start to polyadenylation site (PAS).
@@ -156,7 +160,7 @@ def calculate_distances(
     Note: The input valid_reads should have PAS-adjusted coordinates where:
     - Forward strand (+): end_read = PAS position
     - Reverse strand (-): start_read = PAS position
-    
+
     These adjusted coordinates are set by adjust_read_ends() and passed through
     the bedtools intersection results.
 
@@ -181,7 +185,9 @@ def calculate_distances(
     """
 
     # Create a new DataFrame for storing distances
-    distance_df = valid_reads[["read_id", "rs_id", "transcript_id", "pas_id", "intronic", "CIGAR_N"]].copy()
+    distance_df = valid_reads[
+        ["read_id", "rs_id", "transcript_id", "pas_id", "intronic", "CIGAR_N"]
+    ].copy()
     # print(distance_df)
 
     # Merging to include total intron lengths in the distance_df
@@ -194,21 +200,13 @@ def calculate_distances(
     )
     distance_df.rename(columns={"length_intron": "total_intron_len"}, inplace=True)
 
-    # Calculate distance based on strand information
-    distance_df["distance"] = None
-
-    # Forward strand (+): distance = PAS position (end_read) - read start (start_read)
-    mask_plus = valid_reads["strand"] == "+"
-    distance_df.loc[mask_plus, "distance"] = (
-        valid_reads.loc[mask_plus, "end_read"].values
-        - valid_reads.loc[mask_plus, "start_read"].values
-    )
-
-    # Reverse strand (-): distance = PAS position (start_read) - read genomic end (end_read)
-    mask_minus = valid_reads["strand"] == "-"
-    distance_df.loc[mask_minus, "distance"] = (
-        valid_reads.loc[mask_minus, "start_read"].values
-        - valid_reads.loc[mask_minus, "end_read"].values
+    # Calculate distance from read start to PAS position
+    # After adjust_read_ends(), coordinates are set such that:
+    # - For + strand: end_read = PAS position, start_read = original 5' start
+    # - For - strand: start_read = PAS position - 1, end_read = original 5' extent (high coord)
+    # Therefore, same formula works for both strands:
+    distance_df["distance"] = (
+        valid_reads["end_read"].values - valid_reads["start_read"].values
     )
 
     # For intronic reads, subtract total intron length from distance
@@ -226,3 +224,108 @@ def calculate_distances(
         distance_df.to_csv(output_csv, index=False)
 
     return distance_df
+
+
+def calculate_polyA_distances(
+    polyA_reads_indexed: pd.DataFrame,
+    cigar_metrics: pd.DataFrame,
+    output_csv: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Calculate distances from polyA reads to their CPA sites (from atlas PAS).
+
+    **Input structure:**
+    - polyA_reads_indexed: one row per (read, cpa_site) combination
+      Columns: read_id, rs_id, chr, start, end, strand, cpa_site, pas_id, UMI, CB
+
+    This allows a single read to potentially have multiple cpa_sites if the RS contains
+    reads with different cleavage sites.
+
+    **Distance calculation:**
+    - Forward strand (+): distance = cpa_site - read_start
+      (distance from 5' read start to detected CPA position)
+    - Reverse strand (-): distance = read_end - cpa_site
+      (distance from 3' read end to detected CPA position, accounting for reverse direction)
+
+    **CIGAR correction:**
+    After initial distance calculation, subtract total CIGAR N length (gaps that don't
+    contribute to read-to-CPA distance).
+
+    **Output format:**
+    Matches non-polyA valid_reads format for integration:
+    - read_id, rs_id, transcript_id (NaN), pas_id, intronic (False), CIGAR_N,
+      total_intron_len (= total_cigar_N_length), distance, is_polyA_RS (True)
+
+    Parameters
+    ----------
+    polyA_reads_indexed : pd.DataFrame
+        One row per (read, cpa_site) pair from filter_polyA_by_pas().
+        Columns must include: read_id, rs_id, chr, start, end, strand, cpa_site, pas_id
+    cigar_metrics : pd.DataFrame
+        CIGAR metrics from extract_cigar_n_metrics() (in extract_cigar_BAM.py).
+        Columns: read_id, CIGAR_N, total_cigar_N_length
+    output_csv : str, optional
+        Path to save output CSV. If None, returns DataFrame only (in-memory).
+
+    Returns
+    -------
+    pd.DataFrame
+        Distance calculations for polyA reads with columns:
+        read_id, rs_id, transcript_id, pas_id, intronic, CIGAR_N, total_intron_len,
+        distance, is_polyA_RS
+    """
+
+    # Start with the indexed reads
+    result_df = polyA_reads_indexed[
+        ["read_id", "rs_id", "start", "end", "strand", "cpa_site", "pas_id"]
+    ].copy()
+
+    # Merge CIGAR metrics
+    result_df = result_df.merge(cigar_metrics, on="read_id", how="left")
+
+    # Calculate distance based on strand
+    # For + strand: cpa_site (3' end) - read_start (5' start)
+    # For - strand: read_end (5' start on reverse) - cpa_site (3' end on reverse)
+    mask_plus = result_df["strand"] == "+"
+    mask_minus = result_df["strand"] == "-"
+
+    result_df["distance"] = np.nan
+    result_df.loc[mask_plus, "distance"] = (
+        result_df.loc[mask_plus, "cpa_site"].values
+        - result_df.loc[mask_plus, "start"].values
+    )
+    result_df.loc[mask_minus, "distance"] = (
+        result_df.loc[mask_minus, "end"].values
+        - result_df.loc[mask_minus, "cpa_site"].values
+    )
+
+    # Subtract CIGAR N lengths from distance
+    # (gaps don't contribute to genomic distance from read to CPA)
+    result_df["distance"] = result_df["distance"] - result_df["total_cigar_N_length"]
+
+    # Prepare output with required columns
+    result_df["transcript_id"] = np.nan  # polyA reads have no transcript assignment
+    result_df["intronic"] = False  # polyA uses direct CPA, not transcript intron-based
+    result_df["is_polyA_RS"] = True
+
+    # Rename for consistency with other output
+    result_df = result_df.rename(columns={"total_cigar_N_length": "total_intron_len"})
+
+    # Select and order columns to match non-polyA format
+    output_cols = [
+        "read_id",
+        "rs_id",
+        "transcript_id",
+        "pas_id",
+        "intronic",
+        "CIGAR_N",
+        "total_intron_len",
+        "distance",
+        "is_polyA_RS",
+    ]
+    result_df = result_df[output_cols]
+
+    if output_csv is not None:
+        result_df.to_csv(output_csv, index=False)
+
+    return result_df

@@ -24,7 +24,17 @@ def load_gtf(gtf_file_path: str) -> pd.DataFrame:
         GTF DataFrame with named columns: seqname, source, feature, start, end, score, strand, frame, attribute
     """
     gtf = pd.read_csv(gtf_file_path, sep="\t", comment="#", header=None)
-    gtf.columns = ["seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
+    gtf.columns = [
+        "seqname",
+        "source",
+        "feature",
+        "start",
+        "end",
+        "score",
+        "strand",
+        "frame",
+        "attribute",
+    ]
     return gtf
 
 
@@ -55,12 +65,28 @@ def extract_exons(
         gtf_df = load_gtf(gtf_input)
     else:
         gtf_df = gtf_input
-    
+
     # Ensure named columns if not already set
-    if not hasattr(gtf_df, 'columns') or len(gtf_df.columns) == 0 or gtf_df.columns[0] == 0:
-        gtf_df.columns = ["seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
-    
-    exons = gtf_df[gtf_df["feature"] == "exon"][["seqname", "start", "end", "attribute", "strand"]]
+    if (
+        not hasattr(gtf_df, "columns")
+        or len(gtf_df.columns) == 0
+        or gtf_df.columns[0] == 0
+    ):
+        gtf_df.columns = [
+            "seqname",
+            "source",
+            "feature",
+            "start",
+            "end",
+            "score",
+            "strand",
+            "frame",
+            "attribute",
+        ]
+
+    exons = gtf_df[gtf_df["feature"] == "exon"][
+        ["seqname", "start", "end", "attribute", "strand"]
+    ]
     exons.columns = ["chr", "start", "end", "attributes", "strand"]
     exons["start"] = exons["start"] - 1  # Convert start to 0-based
     exons["transcript_id"] = exons["attributes"].str.extract(
@@ -76,7 +102,9 @@ def extract_exons(
 
     exons["dummy"] = bedtools_score
     # Final reordering - single operation to avoid intermediate DFs
-    exons = exons[["chr", "start", "end", "transcript_id", "dummy", "strand", "gene_id"]]
+    exons = exons[
+        ["chr", "start", "end", "transcript_id", "dummy", "strand", "gene_id"]
+    ]
 
     if exons_output is not None:
         exons.to_csv(exons_output, sep="\t", header=False, index=False)
@@ -171,12 +199,28 @@ def extract_genes(
         gtf_df = load_gtf(gtf_input)
     else:
         gtf_df = gtf_input
-    
+
     # Ensure named columns if not already set
-    if not hasattr(gtf_df, 'columns') or len(gtf_df.columns) == 0 or gtf_df.columns[0] == 0:
-        gtf_df.columns = ["seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
-    
-    genes = gtf_df[gtf_df["feature"] == "gene"][["seqname", "start", "end", "attribute", "strand"]]
+    if (
+        not hasattr(gtf_df, "columns")
+        or len(gtf_df.columns) == 0
+        or gtf_df.columns[0] == 0
+    ):
+        gtf_df.columns = [
+            "seqname",
+            "source",
+            "feature",
+            "start",
+            "end",
+            "score",
+            "strand",
+            "frame",
+            "attribute",
+        ]
+
+    genes = gtf_df[gtf_df["feature"] == "gene"][
+        ["seqname", "start", "end", "attribute", "strand"]
+    ]
     genes.columns = ["chr", "start", "end", "attributes", "strand"]
     genes["start"] = genes["start"] - 1  # Convert start to 0-based
     genes["gene_id"] = genes["attributes"].str.extract(r'gene_id\s+"([^"]+)"')
@@ -224,16 +268,36 @@ def extract_transcripts(
         gtf_df = load_gtf(gtf_input)
     else:
         gtf_df = gtf_input
-    
+
     # Ensure named columns if not already set
-    if not hasattr(gtf_df, 'columns') or len(gtf_df.columns) == 0 or gtf_df.columns[0] == 0:
-        gtf_df.columns = ["seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
-    
-    transcripts = gtf_df[gtf_df["feature"] == "transcript"][["seqname", "start", "end", "attribute", "strand"]]
+    if (
+        not hasattr(gtf_df, "columns")
+        or len(gtf_df.columns) == 0
+        or gtf_df.columns[0] == 0
+    ):
+        gtf_df.columns = [
+            "seqname",
+            "source",
+            "feature",
+            "start",
+            "end",
+            "score",
+            "strand",
+            "frame",
+            "attribute",
+        ]
+
+    transcripts = gtf_df[gtf_df["feature"] == "transcript"][
+        ["seqname", "start", "end", "attribute", "strand"]
+    ]
     transcripts.columns = ["chr", "start", "end", "attributes", "strand"]
     transcripts["start"] = transcripts["start"] - 1  # Convert start to 0-based
-    transcripts["transcript_id"] = transcripts["attributes"].str.extract(r'transcript_id\s+"([^"]+)"')
-    transcripts["gene_id"] = transcripts["attributes"].str.extract(r'gene_id\s+"([^"]+)"')
+    transcripts["transcript_id"] = transcripts["attributes"].str.extract(
+        r'transcript_id\s+"([^"]+)"'
+    )
+    transcripts["gene_id"] = transcripts["attributes"].str.extract(
+        r'gene_id\s+"([^"]+)"'
+    )
     transcripts.drop(columns="attributes", inplace=True)
 
     # Get bedtools score from config
@@ -243,7 +307,9 @@ def extract_transcripts(
 
     transcripts["dummy"] = bedtools_score
     # Final reordering - single operation to avoid intermediate DFs
-    transcripts = transcripts[["chr", "start", "end", "transcript_id", "dummy", "strand", "gene_id"]]
+    transcripts = transcripts[
+        ["chr", "start", "end", "transcript_id", "dummy", "strand", "gene_id"]
+    ]
 
     if transcripts_output is not None:
         transcripts.to_csv(transcripts_output, sep="\t", header=False, index=False)
@@ -274,22 +340,22 @@ def reads_to_bed(
         BED format DataFrame with columns: chr, start, end, read_id, dummy, strand
     """
     df = df_input.copy()
-    
+
     # Convert start to 0-based coordinates for BED format
     df["start"] = df["start"] - 1
-    
+
     # Get bedtools score from config
     if config_manager is None:
         config_manager = ConfigManager()
     bedtools_score = config_manager.get("output", "bedtools_score")
-    
+
     # Add dummy score column
     df["dummy"] = bedtools_score
-    
+
     # Reorder columns to BED format
     df = df[["chr", "start", "end", "read_id", "dummy", "strand"]]
-    
+
     if bed_output is not None:
         df.to_csv(bed_output, sep="\t", header=False, index=False)
-    
+
     return df
