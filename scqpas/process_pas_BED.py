@@ -544,7 +544,9 @@ def filter_polyA_by_pas(
     """
 
     # Step 1: Add rs_id (CB_UMI) directly to input dataframe
-    polyA_reads_df["rs_id"] = polyA_reads_df["CB"] + "_" + polyA_reads_df["UMI"]
+    # Ensure proper copy to avoid SettingWithCopyWarning
+    polyA_reads_df = polyA_reads_df.copy()
+    polyA_reads_df.loc[:, "rs_id"] = polyA_reads_df["CB"] + "_" + polyA_reads_df["UMI"]
 
     # Step 2: Validate chr/strand consistency and filter to valid RS's
     rs_consistency = polyA_reads_df.groupby("rs_id").agg(
@@ -558,21 +560,23 @@ def filter_polyA_by_pas(
     polyA_reads = polyA_reads_df[polyA_reads_df["rs_id"].isin(valid_rs_ids)]
 
     # Get unique cpa_sites per RS (excluding NaN), along with chr and strand
-    rs_cpa_sites = (
-        polyA_reads.groupby("rs_id")
-        .agg(
-            {
-                "cpa_site": lambda x: x.dropna().unique(),
-                "chr": "first",
-                "strand": "first",
-            }
-        )
-        .reset_index()
-    )
+    # Use apply instead of agg for better handling of array-returning functions
+    rs_cpa_sites_list = []
+    for rs_id, group in polyA_reads.groupby("rs_id"):
+        unique_cpa_sites = group["cpa_site"].dropna().unique()
+        chr_val = group["chr"].iloc[0]
+        strand_val = group["strand"].iloc[0]
+        rs_cpa_sites_list.append({
+            "rs_id": rs_id,
+            "cpa_site": unique_cpa_sites,
+            "chr": chr_val,
+            "strand": strand_val,
+        })
+    
+    rs_cpa_sites = pd.DataFrame(rs_cpa_sites_list)
 
-    # Step 3: Explode cpa_sites array into individual rows
-    cpa_df = rs_cpa_sites.explode("cpa_sites").reset_index(drop=True)
-    cpa_df.rename(columns={"cpa_sites": "cpa_site"}, inplace=True)
+    # Step 3: Explode cpa_site array into individual rows
+    cpa_df = rs_cpa_sites.explode("cpa_site").reset_index(drop=True)
     del rs_cpa_sites
 
     # Step 4: Match cpa_sites to overlapping PAS

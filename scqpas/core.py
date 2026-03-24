@@ -25,8 +25,8 @@ from .extract_annotation_GTF import (
     calculate_introns,
     reads_to_bed,
 )
-from .extract_cigar_BAM import get_cigar_bed, filter_by_cigar
-from .calculate_distances import calculate_distances
+from .extract_cigar_BAM import get_cigar_bed, filter_by_cigar, extract_cigar_n_metrics
+from .calculate_distances import calculate_distances, calculate_polyA_distances
 from .bedtools_intersections import run_bedtools_intersect
 from .process_pas_BED import (
     add_read_set_ids,
@@ -35,6 +35,7 @@ from .process_pas_BED import (
     load_pas,
     assign_rs_pas,
     adjust_read_ends,
+    filter_polyA_by_pas,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,19 +57,20 @@ def run_pipeline(
     """
     Execute the complete scQPAS pipeline.
 
-    Processes a BAM file against a GTF annotation in 8 steps:
+    Processes a BAM file against a GTF annotation in 9 steps:
     1. Extract polyA-containing reads from BAM
     2. Extract annotation (genes, exons, introns) from GTF
     3. Convert reads to BED format
     4. Extract CIGAR-derived introns from reads
     5. Intersect reads with annotated transcripts
-    6. Assign polyadenylation sites (PAS) to reads based on transcript association
-    7. Intersect reads with annotated introns (using PAS-adjusted read coordinates)
-    8. Calculate genomic distances from read start to PAS position
+    6. Load and prepare PAS data (shared by both pathways)
+    7. PATHWAY 1 - Non-polyA reads: assign PAS, intersect introns, calculate distances (if transcript intersections exist)
+    8. PATHWAY 2 - PolyA reads: filter to PAS, extract CIGAR metrics, calculate distances (independent)
+    9. Combine results from both pathways
 
-    The polyadenylation site is automatically detected from the reads themselves
-    by identifying the cleavage site with the most supporting reads. This data-driven
-    approach replaces manual specification of the PAS position.
+    The pipeline processes non-polyA and polyA reads separately:
+    - Non-polyA: uses transcript context, intron annotations, and detected CPA sites
+    - PolyA: uses direct PAS matching from sc PolyASite Atlas and CIGAR-derived metrics
 
     Parameters
     ----------
@@ -163,7 +165,7 @@ def run_pipeline(
     with tempfile.TemporaryDirectory() as tmpdir:
 
         # ========== STEP 1: EXTRACT READS ==========
-        logger.info("[1/8] Extracting reads from BAM file...")
+        logger.info("[1/9] Extracting reads from BAM file...")
         with pysam.AlignmentFile(bam_path, "rb") as sam:
             all_reads_df = extract_reads(
                 sam,
@@ -175,16 +177,16 @@ def run_pipeline(
                 ),
             )
 
-        # Extract polyA read IDs for later labeling
-        polyA_RS_read_ids = all_reads_df[all_reads_df["is_polyA_RS"]]["read_id"]
-        reads_df = all_reads_df[all_reads_df["is_polyA_RS"] == False]
+        # Extract polyA reads and non-polyA reads into separate dataframes
+        polyA_reads_df = all_reads_df[all_reads_df["is_polyA_RS"]]
+        reads_df = all_reads_df[~all_reads_df["is_polyA_RS"]]
 
-        polyA_count = reads_df["is_polyA"].sum()
+        polyA_count = len(polyA_reads_df)
         logger.info(f"      ✓ Extracted {len(reads_df)} total reads")
-        logger.info(f"      ✓ Found {polyA_count} polyA-containing reads")
+        logger.info(f"      ✓ Found {polyA_count} reads in polyA-containing read sets")
 
         # ========== STEP 2: EXTRACT ANNOTATION ==========
-        logger.info("[2/8] Extracting annotation from GTF...")
+        logger.info("[2/9] Extracting annotation from GTF...")
 
         # Load GTF once for all extraction functions
         gtf_df = load_gtf(gtf_path)
@@ -218,20 +220,20 @@ def run_pipeline(
 
         # ========== STEP 3: CONVERT READS TO BED ==========
 
-        logger.info("[3/8] Converting reads to BED...")
+        logger.info("[3/9] Converting reads to BED...")
 
         # Convert reads to BED format for bedtools intersections
         reads_bed = reads_to_bed(reads_df)
 
         # ========== STEP 4: EXTRACT CIGAR-DERIVED INTRONS ==========
-        logger.info("[4/8] Parsing CIGAR strings...")
+        logger.info("[4/9] Parsing CIGAR strings...")
 
         # Pass DataFrame directly
         cigar_df = get_cigar_bed(reads_df)
         logger.info(f"      ✓ Extracted {len(cigar_df)} CIGAR-derived introns")
 
         # ========== STEP 5: BEDTOOLS INTERSECTIONS: READS-TRANSCRIPTS ==========
-        logger.info("[5/8] Intersecting reads with annotated transcripts...")
+        logger.info("[5/9] Intersecting reads with annotated transcripts...")
 
         # Intersect reads with transcripts
         reads_transcripts_df = run_bedtools_intersect(
@@ -286,69 +288,74 @@ def run_pipeline(
                 f"      ✓ Found {len(reads_transcripts_df)} read-transcript intersections"
             )
 
-            # ========== STEP 6: PAS PROCESSING ==========
-            logger.info("[6/8] Processing and assigning PAS...")
+        # ========== STEP 6: LOAD AND PREPARE PAS (SHARED BY BOTH PATHWAYS) ==========
+        logger.info("[6/9] Loading and preparing PAS data...")
 
-            # Transcripts with terminal exons extended to capture more PAS
-            gtf_adj = get_adj_gtf(
-                gtf_path,
-                output_file=(
-                    f"{debug_output_dir}/06_gtf_adjusted.gtf"
-                    if debug_output_dir
-                    else None
-                ),
-                extension_length=terminal_exon_extension,
-                config_manager=config_manager,
-            )
-            transcripts_adj = extract_transcripts(
-                gtf_adj,
-                transcripts_output=(
-                    f"{debug_output_dir}/06_transcripts_adjusted.bed"
-                    if debug_output_dir
-                    else None
-                ),
-            )
-            logger.info(
-                f"      ✓ Extracted {len(transcripts_adj)} adjusted transcripts (terminal exons extended by {terminal_exon_extension}bp)"
-            )
+        # Transcripts with terminal exons extended to capture more PAS
+        gtf_adj = get_adj_gtf(
+            gtf_path,
+            output_file=(
+                f"{debug_output_dir}/06_gtf_adjusted.gtf"
+                if debug_output_dir
+                else None
+            ),
+            extension_length=terminal_exon_extension,
+            config_manager=config_manager,
+        )
+        transcripts_adj = extract_transcripts(
+            gtf_adj,
+            transcripts_output=(
+                f"{debug_output_dir}/06_transcripts_adjusted.bed"
+                if debug_output_dir
+                else None
+            ),
+        )
+        logger.info(
+            f"      ✓ Extracted {len(transcripts_adj)} adjusted transcripts (terminal exons extended by {terminal_exon_extension}bp)"
+        )
 
-            # Load PAS bed file from sc PolyASite Atlas v3.0
-            pas_df = load_pas(pas_bed_path, stringency, region=region)
-            logger.info(f"      ✓ Loaded {len(pas_df)} PAS from atlas")
-            if region is not None:
-                logger.info(f"      ✓ Filtered to {len(pas_df)} PAS in region {region}")
+        # Load PAS bed file from sc PolyASite Atlas v3.0
+        pas_df = load_pas(pas_bed_path, stringency, region=region)
+        logger.info(f"      ✓ Loaded {len(pas_df)} PAS from atlas")
+        if region is not None:
+            logger.info(f"      ✓ Filtered to {len(pas_df)} PAS in region {region}")
 
-            # Intersect PAS with adjusted transcripts to assign PAS to transcripts
-            pas_transcript_df = run_bedtools_intersect(
-                pas_df,
-                transcripts_adj,
-                tmpdir,
-                name_a="pas",
-                name_b="transcripts_adj",
-                flags=["-wa", "-wb", "-s"],
-                output_bed=(
-                    f"{debug_output_dir}/06a_pas_transcripts_intersect.bed"
-                    if debug_output_dir
-                    else None
-                ),
-            )
-            logger.info(
-                f"      ✓ Found {len(pas_transcript_df)} PAS-transcript intersections"
-            )
+        # Intersect PAS with adjusted transcripts to assign PAS to transcripts
+        pas_transcript_df = run_bedtools_intersect(
+            pas_df,
+            transcripts_adj,
+            tmpdir,
+            name_a="pas",
+            name_b="transcripts_adj",
+            flags=["-wa", "-wb", "-s"],
+            output_bed=(
+                f"{debug_output_dir}/06a_pas_transcripts_intersect.bed"
+                if debug_output_dir
+                else None
+            ),
+        )
+        logger.info(
+            f"      ✓ Found {len(pas_transcript_df)} PAS-transcript intersections"
+        )
 
-            pas_transcript_df = pas_transcript_df[
-                [0, 1, 2, 3, 4, 5, 9, 12]
-            ]  # Column selection creates new DF
-            pas_transcript_df.columns = [
-                "chr_pas",
-                "start_pas",
-                "end_pas",
-                "pas_id",
-                "gex",
-                "strand_pas",
-                "transcript_id",
-                "gene_id",
-            ]
+        pas_transcript_df = pas_transcript_df[
+            [0, 1, 2, 3, 4, 5, 9, 12]
+        ]  # Column selection creates new DF
+        pas_transcript_df.columns = [
+            "chr_pas",
+            "start_pas",
+            "end_pas",
+            "pas_id",
+            "gex",
+            "strand_pas",
+            "transcript_id",
+            "gene_id",
+        ]
+
+        # ========== PATHWAY 1: NON-POLYA READS (CONDITIONAL ON TRANSCRIPT INTERSECTIONS) ==========
+        distances_df = pd.DataFrame()
+        if not reads_transcripts_df.empty:
+            logger.info("[7/9] Processing non-polyA reads...")
 
             # Assign PAS to reads based on their associated transcripts and read sets
             rs_pas_df = assign_rs_pas(
@@ -356,16 +363,41 @@ def run_pipeline(
                 pas_transcript_df,
                 config_manager=config_manager,
                 output_csv=(
-                    f"{debug_output_dir}/06b_rs_pas_assignments.csv"
+                    f"{debug_output_dir}/07a_rs_pas_assignments.csv"
                     if debug_output_dir
                     else None
                 ),
             )
             logger.info(f"      ✓ Assigned PAS to {len(rs_pas_df)} read-set records")
-            # cols: "rs_id", "transcript_id", "pas_id", "read_id", "chr_read", "start_read", "end_read", "strand"
 
-            # ========== STEP 7: BEDTOOLS INTERSECTIONS: READS-INTRONS ==========
-            logger.info("[7/8] Intersecting reads with annotated introns...")
+            rs_pas_adj = adjust_read_ends(
+                rs_pas_df,
+                output_csv=(
+                    f"{debug_output_dir}/07b_rs_pas_adjusted.csv"
+                    if debug_output_dir
+                    else None
+                ),
+            )
+            logger.info(
+                f"      ✓ Adjusted read coordinates for {len(rs_pas_adj)} read-set records"
+            )
+
+            # Intersect reads with introns
+            reads_introns_df = run_bedtools_intersect(
+                rs_pas_adj,
+                introns_df,
+                tmpdir,
+                name_a="reads_pas",
+                name_b="introns",
+                flags=["-s", "-F", "1.0", "-wa", "-wb"],
+                output_bed=(
+                    f"{debug_output_dir}/07c_reads_introns_intersect.bed"
+                    if debug_output_dir
+                    else None
+                ),
+            )
+
+            # Assign column names: -wa outputs A columns, -wb outputs B columns
 
             rs_pas_adj = adjust_read_ends(
                 rs_pas_df,
@@ -447,7 +479,7 @@ def run_pipeline(
 
                 if debug_output_dir is not None:
                     reads_introns_df.to_csv(
-                        f"{debug_output_dir}/07c_reads_introns_filtered.csv",
+                        f"{debug_output_dir}/07d_reads_introns_filtered.csv",
                         index=False,
                     )
 
@@ -455,13 +487,9 @@ def run_pipeline(
                     f"      ✓ Retained final {len(reads_introns_df)} read-intron intersections"
                 )
 
-                # ========== STEP 8: CALCULATE DISTANCES ==========
-                logger.info("[8/8] Calculating distances from CPA sites...")
-
-                # Free memory before filter_by_cigar - delete all intermediate DataFrames no longer needed
-                # Keep only: reads_df, rs_pas_adj, reads_introns_df, cigar_df (required for filter_by_cigar)
+                # Free memory before filter_by_cigar
                 del gtf_df, exons_df, introns_df, transcripts_df, reads_bed
-                del transcripts_adj, pas_df, pas_transcript_df
+                del transcripts_adj, pas_transcript_df
                 del reads_transcripts_df, rs_pas_df
                 gc.collect()
 
@@ -475,7 +503,7 @@ def run_pipeline(
 
                 if debug_output_dir is not None:
                     valid_reads.to_csv(
-                        f"{debug_output_dir}/08a_valid_reads_filtered.csv", index=False
+                        f"{debug_output_dir}/07e_valid_reads_filtered.csv", index=False
                     )
 
                 n_intronic = (
@@ -491,32 +519,81 @@ def run_pipeline(
                     valid_reads,
                     reads_introns_df,
                     output_csv=(
-                        f"{debug_output_dir}/08_distances.csv"
+                        f"{debug_output_dir}/07f_distances_non_polyA.csv"
                         if debug_output_dir
                         else None
                     ),
                 )
                 logger.info(
-                    f"      ✓ Calculated distances for {len(distances_df)} reads"
+                    f"      ✓ Calculated distances for {len(distances_df)} non-polyA reads"
                 )
 
-                distances_df["is_polyA_RS"] = distances_df["read_id"].isin(
-                    polyA_RS_read_ids
-                )
-                n_polyA = distances_df["is_polyA_RS"].sum()
-                logger.info(f"      ✓ Labeled {n_polyA} reads as polyA-containing")
-                # this discards direct cleavage evidence from polyA reads, instead uses cpa site from atlas
-
-                # Free up memory after filter_by_cigar
+                # Free up memory
                 del valid_reads
                 gc.collect()
 
             else:
-                distances_df = pd.DataFrame()
+                # No intron intersections found, start with empty distances df
                 logger.warning("      ✗ No read-intron intersections found")
+                distances_df = pd.DataFrame()
         else:
-            distances_df = pd.DataFrame()
+            # No read-transcript intersections found, start with empty distances df
             logger.warning("      ✗ No read-transcript intersections found")
+            distances_df = pd.DataFrame()
+
+        # ========== PATHWAY 2: POLYA READS ==========
+        logger.info("[8/9] Processing polyA reads and calculating distances...")
+
+        polyA_distances_df = None
+        if not polyA_reads_df.empty:
+            # Filter polyA reads by atlas PAS
+            polyA_reads_indexed = filter_polyA_by_pas(
+                polyA_reads_df,
+                pas_df,
+                output_csv=(
+                    f"{debug_output_dir}/08a_polyA_reads_indexed.csv"
+                    if debug_output_dir
+                    else None
+                ),
+            )
+            logger.info(f"      ✓ Indexed {len(polyA_reads_indexed)} polyA reads to PAS")
+
+            # Extract CIGAR metrics for polyA reads
+            polyA_cigar_metrics = extract_cigar_n_metrics(polyA_reads_df)
+
+            # Calculate distances from polyA reads to CPA sites
+            polyA_distances_df = calculate_polyA_distances(
+                polyA_reads_indexed,
+                polyA_cigar_metrics,
+                output_csv=(
+                    f"{debug_output_dir}/08b_polyA_distances.csv"
+                    if debug_output_dir
+                    else None
+                ),
+            )
+            logger.info(
+                f"      ✓ Calculated distances for {len(polyA_distances_df)} polyA reads"
+            )
+            del polyA_reads_indexed, polyA_cigar_metrics
+            gc.collect()
+        else:
+            logger.info("      ✓ No polyA reads to process")
+
+        # ========== FINAL MERGE: COMBINE NON-POLYA AND POLYA RESULTS ==========
+        logger.info("[9/9] Combining results...")
+
+        # Merge based on what distance dataframes we have
+        if not distances_df.empty and polyA_distances_df is not None and not polyA_distances_df.empty:
+            # Both pathways produced results
+            distances_df = pd.concat([distances_df, polyA_distances_df], ignore_index=True)
+            logger.info(
+                f"      ✓ Combined {len(distances_df)} total distances (non-polyA + polyA)"
+            )
+        elif polyA_distances_df is not None and not polyA_distances_df.empty:
+            # Only polyA pathway produced results
+            distances_df = polyA_distances_df
+            logger.info(f"      ✓ Using {len(distances_df)} polyA distances only")
+        # else: distances_df already has non-polyA results or is empty (handled above)
 
     # ========== WRITE OUTPUT ==========
     output_path_obj = Path(output_path)
