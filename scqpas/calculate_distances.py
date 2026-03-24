@@ -283,6 +283,9 @@ def calculate_polyA_distances(
     # Merge CIGAR metrics
     result_df = result_df.merge(cigar_metrics, on="read_id", how="left")
 
+    # Convert CIGAR_N count to boolean (True if any N operations, False otherwise)
+    result_df["CIGAR_N"] = result_df["CIGAR_N"] > 0
+
     # Calculate distance based on strand
     # For + strand: cpa_site (3' end) - read_start (5' start)
     # For - strand: read_end (5' start on reverse) - cpa_site (3' end on reverse)

@@ -25,8 +25,8 @@ from .extract_annotation_GTF import (
     calculate_introns,
     reads_to_bed,
 )
-from .extract_cigar_BAM import get_cigar_bed, filter_by_cigar, extract_cigar_n_metrics
-from .calculate_distances import calculate_distances, calculate_polyA_distances
+from .extract_cigar_BAM import get_cigar_bed, filter_by_cigar
+from .calculate_distances import calculate_distances
 from .bedtools_intersections import run_bedtools_intersect
 from .process_pas_BED import (
     add_read_set_ids,
@@ -35,7 +35,6 @@ from .process_pas_BED import (
     load_pas,
     assign_rs_pas,
     adjust_read_ends,
-    filter_polyA_by_pas,
 )
 
 logger = logging.getLogger(__name__)
@@ -176,11 +175,9 @@ def run_pipeline(
                 ),
             )
 
-        # Extract polyA reads and non-polyA reads into separate dataframes
-        polyA_reads_df = all_reads_df[all_reads_df["is_polyA_RS"]].copy()
-        reads_df = all_reads_df[~all_reads_df["is_polyA_RS"]].copy()
-        del all_reads_df
-        gc.collect()
+        # Extract polyA read IDs for later labeling
+        polyA_RS_read_ids = all_reads_df[all_reads_df["is_polyA_RS"]]["read_id"]
+        reads_df = all_reads_df[all_reads_df["is_polyA_RS"] == False]
 
         polyA_count = reads_df["is_polyA"].sum()
         logger.info(f"      ✓ Extracted {len(reads_df)} total reads")
@@ -502,6 +499,13 @@ def run_pipeline(
                 logger.info(
                     f"      ✓ Calculated distances for {len(distances_df)} reads"
                 )
+
+                distances_df["is_polyA_RS"] = distances_df["read_id"].isin(
+                    polyA_RS_read_ids
+                )
+                n_polyA = distances_df["is_polyA_RS"].sum()
+                logger.info(f"      ✓ Labeled {n_polyA} reads as polyA-containing")
+                # this discards direct cleavage evidence from polyA reads, instead uses cpa site from atlas
 
                 # Free up memory after filter_by_cigar
                 del valid_reads
