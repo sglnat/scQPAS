@@ -449,6 +449,55 @@ def filter_by_cigar(
         else:
             close_reads_slice = not_intronic_df
 
+        # ========== STEP 8b: FILTER READS OVERLAPPING INTRONS (TRANSCRIPT-SPECIFIC, STRICT) ==========
+        # Some reads may not be detected by bedtools (due to -F 1.0 flag requiring 100% coverage),
+        # but may still overlap with annotated introns of their assigned transcript.
+        # These should be excluded from output as they are intronic reads.
+        # STRICT: ANY overlap (even 1bp) with an intron results in filtering.
+        # TRANSCRIPT-SPECIFIC: A read may overlap intron of transcript A but not B,
+        # so we keep/filter per (read_id, transcript_id) combo.
+        if not close_reads_slice.empty and not intronic_reads.empty:
+            # Extract transcript_id from intron_id (format: "ENST00000355354.13_5" -> "ENST00000355354")
+            intronic_reads_copy = intronic_reads.copy()
+            intronic_reads_copy["transcript_id_from_intron"] = (
+                intronic_reads_copy["intron_id"].str.split("_").str[0]
+            )
+            
+            # Merge reads with introns from same transcript
+            # This creates all (read, intron) pairs for matching transcripts
+            merged = close_reads_slice.merge(
+                intronic_reads_copy[["chr_intron", "start_intron", "end_intron", "strand_intron", "transcript_id_from_intron"]],
+                left_on=["transcript_id"],
+                right_on=["transcript_id_from_intron"],
+                how="left"
+            )
+            
+            # Check overlap condition (vectorized)
+            # Overlap: same chr, same strand, AND temporal overlap
+            has_overlap = (
+                (merged["chr_read"] == merged["chr_intron"])
+                & (merged["strand"] == merged["strand_intron"])
+                & (merged["start_read"] < merged["end_intron"])
+                & (merged["end_read"] > merged["start_intron"])
+            )
+            
+            # Get unique (rs_id, transcript_id) pairs that have ANY overlapping read
+            # ALL reads in these pairs will be filtered out, not just the overlapping reads
+            overlapping_combos = merged.loc[has_overlap, ["rs_id", "transcript_id"]].drop_duplicates()
+            
+            # Anti-join: filter out ALL reads in (rs_id, transcript_id) pairs with overlaps
+            if not overlapping_combos.empty:
+                close_reads_slice = close_reads_slice.merge(
+                    overlapping_combos,
+                    on=["rs_id", "transcript_id"],
+                    how="left",
+                    indicator=True
+                )
+                close_reads_slice = close_reads_slice[close_reads_slice["_merge"] == "left_only"].drop(columns=["_merge"])
+            
+            del merged  # Free memory
+            gc.collect()
+
         if not close_reads_slice.empty:
             close_reads_df = close_reads_slice[
                 [

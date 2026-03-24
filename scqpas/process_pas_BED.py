@@ -547,6 +547,7 @@ def filter_polyA_by_pas(
     # Ensure proper copy to avoid SettingWithCopyWarning
     polyA_reads_df = polyA_reads_df.copy()
     polyA_reads_df.loc[:, "rs_id"] = polyA_reads_df["CB"] + "_" + polyA_reads_df["UMI"]
+    logger.info(f"Step 1 - After adding rs_id: {len(polyA_reads_df['rs_id'].unique())} RS, {len(polyA_reads_df)} reads")
 
     # Step 2: Validate chr/strand consistency and filter to valid RS's
     rs_consistency = polyA_reads_df.groupby("rs_id").agg(
@@ -558,6 +559,7 @@ def filter_polyA_by_pas(
     del rs_consistency
 
     polyA_reads = polyA_reads_df[polyA_reads_df["rs_id"].isin(valid_rs_ids)]
+    logger.info(f"Step 2 - After chr/strand consistency filter: {len(polyA_reads['rs_id'].unique())} RS, {len(polyA_reads)} reads")
 
     # Get unique cpa_sites per RS (excluding NaN), along with chr and strand
     # Use apply instead of agg for better handling of array-returning functions
@@ -577,6 +579,7 @@ def filter_polyA_by_pas(
 
     # Step 3: Explode cpa_site array into individual rows
     cpa_df = rs_cpa_sites.explode("cpa_site").reset_index(drop=True)
+    logger.info(f"Step 3 - After extracting unique cpa_sites per RS: {len(rs_cpa_sites)} RS with {len(cpa_df)} total cpa_sites")
     del rs_cpa_sites
 
     # Step 4: Match cpa_sites to overlapping PAS
@@ -595,12 +598,14 @@ def filter_polyA_by_pas(
             & (rs_cpa_pas_df["cpa_site"] <= rs_cpa_pas_df["end"])
         )
     ][["rs_id", "cpa_site", "pas_id"]].drop_duplicates()
+    logger.info(f"Step 4 - After PAS overlap filter: {len(rs_cpa_pas_df['rs_id'].unique())} RS with {len(rs_cpa_pas_df)} valid cpa_site-PAS combinations")
     del cpa_df
 
     # Step 5: Expand to read level using merge
     result_df = polyA_reads[
         ["read_id", "rs_id", "chr", "start", "end", "strand", "UMI", "CB"]
     ].merge(rs_cpa_pas_df, on="rs_id")
+    logger.info(f"Step 5 - After expanding reads to all cpa_sites per RS: {len(result_df['rs_id'].unique())} RS with {len(result_df)} total read-cpa_site pairs")
     del polyA_reads, rs_cpa_pas_df
 
     # Reorder columns

@@ -182,7 +182,7 @@ def run_pipeline(
         reads_df = all_reads_df[~all_reads_df["is_polyA_RS"]]
 
         polyA_count = len(polyA_reads_df)
-        logger.info(f"      ✓ Extracted {len(reads_df)} total reads")
+        logger.info(f"      ✓ Extracted {len(all_reads_df)} total reads")
         logger.info(f"      ✓ Found {polyA_count} reads in polyA-containing read sets")
 
         # ========== STEP 2: EXTRACT ANNOTATION ==========
@@ -389,38 +389,9 @@ def run_pipeline(
                 tmpdir,
                 name_a="reads_pas",
                 name_b="introns",
-                flags=["-s", "-F", "1.0", "-wa", "-wb"],
+                flags=["-s", "-f", "1.0", "-wa", "-wb"],
                 output_bed=(
                     f"{debug_output_dir}/07c_reads_introns_intersect.bed"
-                    if debug_output_dir
-                    else None
-                ),
-            )
-
-            # Assign column names: -wa outputs A columns, -wb outputs B columns
-
-            rs_pas_adj = adjust_read_ends(
-                rs_pas_df,
-                output_csv=(
-                    f"{debug_output_dir}/07a_rs_pas_adjusted.csv"
-                    if debug_output_dir
-                    else None
-                ),
-            )
-            logger.info(
-                f"      ✓ Adjusted read coordinates for {len(rs_pas_adj)} read-set records"
-            )
-
-            # Intersect reads with introns
-            reads_introns_df = run_bedtools_intersect(
-                rs_pas_adj,
-                introns_df,
-                tmpdir,
-                name_a="reads_pas",
-                name_b="introns",
-                flags=["-s", "-F", "1.0", "-wa", "-wb"],
-                output_bed=(
-                    f"{debug_output_dir}/07b_reads_introns_intersect.bed"
                     if debug_output_dir
                     else None
                 ),
