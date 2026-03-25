@@ -389,7 +389,7 @@ def run_pipeline(
                 tmpdir,
                 name_a="reads_pas",
                 name_b="introns",
-                flags=["-s", "-f", "1.0", "-wa", "-wb"],
+                flags=["-s", "-F", "1.0", "-wa", "-wb"],
                 output_bed=(
                     f"{debug_output_dir}/07c_reads_introns_intersect.bed"
                     if debug_output_dir
