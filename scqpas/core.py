@@ -370,6 +370,108 @@ def run_pipeline(
             )
             logger.info(f"      ✓ Assigned PAS to {len(rs_pas_df)} read-set records")
 
+            # ========== STEP 7b: CHECK EXON OVERLAP (USING ORIGINAL READ COORDINATES) ==========
+            # Ensure all reads have 100% overlap with at least one exon from their assigned transcript
+            # MUST use rs_pas (original coords), not rs_pas_adj (adjusted coords)
+            logger.info("[7b/9] Checking reads have 100% exon overlap...")
+            
+            # Get unique transcripts in rs_pas_df
+            transcripts_in_reads = set(rs_pas_df["transcript_id"].unique())
+            
+            # Filter exons to only those transcripts
+            exons_filtered = exons_df[exons_df["transcript_id"].isin(transcripts_in_reads)].copy()
+            
+            # exons_df already has: chr, start, end, transcript_id, dummy, strand, gene_id
+            exons_bed = exons_filtered[["chr", "start", "end", "transcript_id", "dummy", "strand"]].copy()
+            
+            # DEBUG: Log input dimensions
+            logger.info(f"[7b DEBUG] rs_pas_df shape: {rs_pas_df.shape} (rows: {len(rs_pas_df)}, cols: {rs_pas_df.shape[1]})")
+            logger.info(f"[7b DEBUG] rs_pas_df columns: {list(rs_pas_df.columns)}")
+            logger.info(f"[7b DEBUG] exons_bed shape: {exons_bed.shape} (rows: {len(exons_bed)}, cols: {exons_bed.shape[1]})")
+            logger.info(f"[7b DEBUG] exons_bed columns: {list(exons_bed.columns)}")
+            
+            # Intersect reads with exons (100% read overlap required)
+            reads_exons_df = run_bedtools_intersect(
+                rs_pas_df,
+                exons_bed,
+                tmpdir,
+                name_a="reads_pas",
+                name_b="exons",
+                flags=["-s", "-f", "1.0", "-wa", "-wb"],
+                output_bed=(
+                    f"{debug_output_dir}/07b_reads_exons_intersect.bed"
+                    if debug_output_dir
+                    else None
+                ),
+            )
+            
+            # DEBUG: Log bedtools output dimensions
+            if not reads_exons_df.empty:
+                logger.info(f"[7b DEBUG] Bedtools output shape: {reads_exons_df.shape} (rows: {len(reads_exons_df)}, cols: {reads_exons_df.shape[1]})")
+                logger.info(f"[7b DEBUG] Expected cols: {rs_pas_df.shape[1]} (rs_pas) + {exons_bed.shape[1]} (exons) = {rs_pas_df.shape[1] + exons_bed.shape[1]}")
+            else:
+                logger.info(f"[7b DEBUG] Bedtools output is empty")
+            
+            # Assign column names to bedtools output for easier access
+            # rs_pas_df columns: chr_read, start_read, end_read, read_id, dummy, strand, transcript_id, pas_id, rs_id, chr_pas, pos_pas, strand_pas (12)
+            # exons_bed columns: chr, start, end, transcript_id, dummy, strand (6)
+            if not reads_exons_df.empty:
+                expected_cols = rs_pas_df.shape[1] + exons_bed.shape[1]
+                actual_cols = reads_exons_df.shape[1]
+                logger.info(f"[7b DEBUG] Assigning {actual_cols} columns (expected {expected_cols})")
+                
+                reads_exons_df.columns = [
+                    # rs_pas_df columns (9)
+                    "chr_read", "start_read", "end_read", "read_id", "dummy_read", "strand_read",
+                    "transcript_id_read", "pas_id", "rs_id",
+                    # exons_bed columns (6)
+                    "chr_exon", "start_exon", "end_exon", "transcript_id_exon", "dummy_exon", "strand_exon"
+                ]
+                logger.info(f"[7b DEBUG] Column names assigned: {list(reads_exons_df.columns)}")
+                
+                # Extract read_ids that have 100% exon overlap (vectorized, no loop)
+                reads_with_exon_overlap = set()
+                
+                # Keep only rows where transcript_ids match
+                valid_overlaps = reads_exons_df[
+                    reads_exons_df["transcript_id_read"] == reads_exons_df["transcript_id_exon"]
+                ]
+                
+                if not valid_overlaps.empty:
+                    reads_with_exon_overlap = set(valid_overlaps["read_id"].unique())
+                
+                logger.info(f"      ✓ Found {len(reads_with_exon_overlap)} reads with 100% exon overlap from their assigned transcript")
+            else:
+                logger.warning("      ⚠ No reads with 100% exon overlap found")
+                reads_with_exon_overlap = set()
+            
+            # Filter: remove ALL reads from (rs_id, transcript_id) pairs where ANY read lacks exon overlap
+            if len(reads_with_exon_overlap) > 0:
+                rs_pas_before = len(rs_pas_df)
+                
+                # Find reads WITHOUT exon overlap
+                reads_without_overlap_ids = set(rs_pas_df["read_id"].unique()) - reads_with_exon_overlap
+                
+                if len(reads_without_overlap_ids) > 0:
+                    # Get (rs_id, transcript_id) pairs from reads without exon overlap
+                    invalid_pairs = rs_pas_df[rs_pas_df["read_id"].isin(reads_without_overlap_ids)][
+                        ["rs_id", "transcript_id"]
+                    ].drop_duplicates()
+                    
+                    # Mark all reads from these invalid pairs for removal
+                    rs_pas_df = rs_pas_df.merge(
+                        invalid_pairs,
+                        on=["rs_id", "transcript_id"],
+                        how="left",
+                        indicator=True
+                    )
+                    rs_pas_df = rs_pas_df[rs_pas_df["_merge"] == "left_only"].drop(columns=["_merge"]).copy()
+                
+                logger.info(f"      ✓ Filtered: {rs_pas_before} → {len(rs_pas_df)} read-set records (removed {rs_pas_before - len(rs_pas_df)} from invalid rs_id+transcript_id pairs)")
+            else:
+                logger.warning("      ⚠ No reads retained after exon overlap filter")
+                rs_pas_df = rs_pas_df.iloc[0:0]  # Create empty dataframe with same structure
+
             rs_pas_adj = adjust_read_ends(
                 rs_pas_df,
                 output_csv=(
