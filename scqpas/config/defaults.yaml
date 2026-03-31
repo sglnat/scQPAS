@@ -37,8 +37,8 @@ annotation:
 pas_filtering:
   # Minimum stringency level for PAS from sc PolyASite Atlas
   # Only PAS with stringency >= this value will be retained
-  # Default: 80
-  stringency: 80
+  # Default: 0 (no filtering - include all PAS)
+  stringency: 0
 
 # Output and formatting
 output:

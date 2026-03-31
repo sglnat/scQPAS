@@ -402,6 +402,75 @@ def filter_by_cigar(
         f"[STEP 7] Prepared intronic_noN: {len(intronic_noN_small)} rows | Memory: {mem_mb:.1f} MB"
     )
 
+    # ========== STEP 7b: FILTER intronic_noN BY INTRON OVERLAPS (USING TRUE READ COORDS) ==========
+    # intronic_noN_small has adjusted read coordinates (extended to PAS)
+    # We need to check overlaps using TRUE read coordinates from reads_df
+    # Look up true start/end for each read_id and check against introns
+    if not intronic_noN_small.empty and not intronic_reads.empty:
+        # Build efficient read_id lookup from reads_df (just id and coords)
+        # Pre-filter to only reads present in intronic_noN_small to keep lookup small
+        read_ids_needed = intronic_noN_small["read_id"].unique()
+        reads_lookup = reads[reads["read_id"].isin(read_ids_needed)][["read_id", "start", "end"]].drop_duplicates()
+        reads_lookup.columns = ["read_id", "true_start", "true_end"]
+        
+        # Merge intronic_noN_small with true coordinates
+        intronic_noN_with_true_coords = intronic_noN_small.merge(
+            reads_lookup,
+            on="read_id",
+            how="left"
+        )
+        
+        # Extract transcript_id from intron_id and deduplicate
+        intronic_reads_copy = intronic_reads.copy()
+        intronic_reads_copy["transcript_id_from_intron"] = (
+            intronic_reads_copy["intron_id"].str.split("_").str[0]
+        )
+        unique_introns = intronic_reads_copy[
+            ["chr_intron", "start_intron", "end_intron", "strand_intron", "transcript_id_from_intron"]
+        ].drop_duplicates()
+        
+        # Merge with introns from same transcript
+        merged = intronic_noN_with_true_coords.merge(
+            unique_introns,
+            left_on=["transcript_id"],
+            right_on=["transcript_id_from_intron"],
+            how="left"
+        )
+        
+        # Check overlap using TRUE read coordinates
+        has_overlap = (
+            (merged["chr_read"] == merged["chr_intron"])
+            & (merged["strand"] == merged["strand_intron"])
+            & (merged["true_start"] < merged["end_intron"])
+            & (merged["true_end"] > merged["start_intron"])
+        )
+        
+        # Get (rs_id, transcript_id) pairs with overlaps
+        overlapping_combos = merged.loc[has_overlap, ["rs_id", "transcript_id"]].drop_duplicates()
+        
+        rows_before = len(intronic_noN_small)
+        
+        # Remove all reads in overlapping pairs
+        if not overlapping_combos.empty:
+            intronic_noN_small = intronic_noN_small.merge(
+                overlapping_combos,
+                on=["rs_id", "transcript_id"],
+                how="left",
+                indicator=True
+            )
+            intronic_noN_small = intronic_noN_small[intronic_noN_small["_merge"] == "left_only"].drop(columns=["_merge"])
+        
+        rows_after = len(intronic_noN_small)
+        n_combos = len(overlapping_combos) if not overlapping_combos.empty else 0
+        
+        mem_mb = _get_memory_usage()
+        logger.info(
+            f"[STEP 7b] Intron overlap filtering: {rows_after} retained (removed {rows_before - rows_after} rows, {n_combos} combos with overlaps) | Memory: {mem_mb:.1f} MB"
+        )
+        
+        del read_ids_needed, merged, intronic_reads_copy, unique_introns, intronic_noN_with_true_coords, reads_lookup
+        gc.collect()
+
     # ========== STEP 8: HANDLE READS CLOSE TO CLEAVAGE SITE ==========
     # Find reads in filtered_reads that:
     # 1. Are NOT already in intronic_reads (not counted as intronic)
@@ -449,24 +518,34 @@ def filter_by_cigar(
         else:
             close_reads_slice = not_intronic_df
 
-        # ========== STEP 8b: FILTER READS OVERLAPPING INTRONS (TRANSCRIPT-SPECIFIC, STRICT) ==========
-        # Some reads may not be detected by bedtools (due to -F 1.0 flag requiring 100% coverage),
-        # but may still overlap with annotated introns of their assigned transcript.
+        mem_mb = _get_memory_usage()
+        logger.info(
+            f"[STEP 8a] Before intron overlap filtering: {len(close_reads_slice)} rows | Memory: {mem_mb:.1f} MB"
+        )
+
+        # ========== STEP 8b: FILTER READS OVERLAPPING INTRONS (TRANSCRIPT-SPECIFIC) ==========
+        # Some reads may still overlap with annotated introns of their assigned transcript.
         # These should be excluded from output as they are intronic reads.
-        # STRICT: ANY overlap (even 1bp) with an intron results in filtering.
+        # STRICT: ANY overlap with an intron results in filtering.
         # TRANSCRIPT-SPECIFIC: A read may overlap intron of transcript A but not B,
         # so we keep/filter per (read_id, transcript_id) combo.
         if not close_reads_slice.empty and not intronic_reads.empty:
             # Extract transcript_id from intron_id (format: "ENST00000355354.13_5" -> "ENST00000355354")
+            # and deduplicate to get unique (transcript_id, intron coordinates) only
             intronic_reads_copy = intronic_reads.copy()
             intronic_reads_copy["transcript_id_from_intron"] = (
                 intronic_reads_copy["intron_id"].str.split("_").str[0]
             )
             
+            # Keep only unique intron entries per transcript to avoid redundant overlap checks
+            unique_introns = intronic_reads_copy[
+                ["chr_intron", "start_intron", "end_intron", "strand_intron", "transcript_id_from_intron"]
+            ].drop_duplicates()
+            
             # Merge reads with introns from same transcript
-            # This creates all (read, intron) pairs for matching transcripts
+            # This creates (read, unique_intron) pairs for matching transcripts
             merged = close_reads_slice.merge(
-                intronic_reads_copy[["chr_intron", "start_intron", "end_intron", "strand_intron", "transcript_id_from_intron"]],
+                unique_introns,
                 left_on=["transcript_id"],
                 right_on=["transcript_id_from_intron"],
                 how="left"
@@ -481,9 +560,10 @@ def filter_by_cigar(
                 & (merged["end_read"] > merged["start_intron"])
             )
             
-            # Get unique (rs_id, transcript_id) pairs that have ANY overlapping read
-            # ALL reads in these pairs will be filtered out, not just the overlapping reads
+            # Get overlapping combos and filter
             overlapping_combos = merged.loc[has_overlap, ["rs_id", "transcript_id"]].drop_duplicates()
+            
+            rows_before_filter = len(close_reads_slice)
             
             # Anti-join: filter out ALL reads in (rs_id, transcript_id) pairs with overlaps
             if not overlapping_combos.empty:
@@ -494,6 +574,14 @@ def filter_by_cigar(
                     indicator=True
                 )
                 close_reads_slice = close_reads_slice[close_reads_slice["_merge"] == "left_only"].drop(columns=["_merge"])
+            
+            rows_after_filter = len(close_reads_slice)
+            rows_filtered = rows_before_filter - rows_after_filter
+            
+            mem_mb = _get_memory_usage()
+            logger.info(
+                f"[STEP 8b] After intron overlap filtering: {rows_after_filter} rows retained (filtered out {rows_filtered} rows, {len(overlapping_combos)} (rs_id, tx_id) combos with overlaps) | Memory: {mem_mb:.1f} MB"
+            )
             
             del merged  # Free memory
             gc.collect()

@@ -68,7 +68,8 @@ def run_bedtools_intersect(
     try:
 
         cmd = ["bedtools", "intersect"] + flags + ["-a", bed_a_path, "-b", bed_b_path]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        # result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.stdout.strip():
             with open(output_path, "w") as f:
@@ -88,7 +89,7 @@ def run_bedtools_intersect(
             return result_df
     except FileNotFoundError:
         raise FileNotFoundError(
-            "bedtools not found. Please install bedtools: conda install -c bioconda bedtools"
+            "FileNotFoundError"
         )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"bedtools error: {e.stderr}")

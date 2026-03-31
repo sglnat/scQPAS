@@ -255,8 +255,8 @@ def run_pipeline(
         # Assign column names: -wa outputs 6 cols, -wb outputs 7 cols
         if not reads_transcripts_df.empty:
             # Keep only the reads cols, transcript_id and gene_id
-            reads_transcripts_df = reads_transcripts_df[
-                [0, 1, 2, 3, 4, 5, 9, 12]
+            reads_transcripts_df = reads_transcripts_df.iloc[
+                :, [0, 1, 2, 3, 4, 5, 9, 12]
             ]  # Column selection creates new DF
             reads_transcripts_df.columns = [
                 "chr_read",
@@ -338,8 +338,14 @@ def run_pipeline(
             f"      ✓ Found {len(pas_transcript_df)} PAS-transcript intersections"
         )
 
-        pas_transcript_df = pas_transcript_df[
-            [0, 1, 2, 3, 4, 5, 9, 12]
+        if pas_transcript_df.empty:
+            raise RuntimeError(
+                f"No PAS-transcript intersections found. "
+                f"Check that PAS and transcripts overlap in region {region if region else 'genome-wide'}"
+            )
+
+        pas_transcript_df = pas_transcript_df.iloc[
+            :, [0, 1, 2, 3, 4, 5, 9, 12]
         ]  # Column selection creates new DF
         pas_transcript_df.columns = [
             "chr_pas",
@@ -513,7 +519,7 @@ def run_pipeline(
             distances_df = pd.DataFrame()
 
         # ========== PATHWAY 2: POLYA READS ==========
-        logger.info("[8/9] Processing polyA reads and calculating distances...")
+        logger.info("[8/9] Processing polyA read sets and calculating distances...")
 
         polyA_distances_df = None
         if not polyA_reads_df.empty:

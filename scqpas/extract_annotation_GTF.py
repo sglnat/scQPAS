@@ -341,8 +341,8 @@ def reads_to_bed(
     """
     df = df_input.copy()
 
-    # Convert start to 0-based coordinates for BED format
-    df["start"] = df["start"] - 1
+    # Convert start to 0-based coordinates for BED format -> already done by samtools!
+    # df["start"] = df["start"] - 1
 
     # Get bedtools score from config
     if config_manager is None:

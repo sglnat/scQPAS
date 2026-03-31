@@ -287,9 +287,10 @@ def load_pas(
         # Filter by chromosome
         pas = pas[pas["chr"] == chr_part]
 
-        # Filter by coordinates if provided
+        # Filter by coordinates if provided (overlap-based, not full containment)
+        # Include any PAS that overlaps the region: start < end_coord AND end > start_coord
         if start_coord is not None and end_coord is not None:
-            pas = pas[(pas["start"] >= start_coord) & (pas["end"] <= end_coord)]
+            pas = pas[(pas["start"] < end_coord) & (pas["end"] > start_coord)]
 
     return pas[["chr", "start", "end", "pas_id", "gex", "strand"]]
 
