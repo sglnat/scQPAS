@@ -167,7 +167,7 @@ def run_pipeline(
         # ========== STEP 1: EXTRACT READS ==========
         logger.info("[1/9] Extracting reads from BAM file...")
         with pysam.AlignmentFile(bam_path, "rb") as sam:
-            all_reads_df = extract_reads(
+            reads_df = extract_reads(
                 sam,
                 percentage_threshold=percentage_threshold,
                 length_threshold=length_threshold,
@@ -178,11 +178,10 @@ def run_pipeline(
             )
 
         # Extract polyA reads and non-polyA reads into separate dataframes
-        polyA_reads_df = all_reads_df[all_reads_df["is_polyA_RS"]]
-        reads_df = all_reads_df[~all_reads_df["is_polyA_RS"]]
+        polyA_reads_df = reads_df[reads_df["is_polyA_RS"]]
 
         polyA_count = len(polyA_reads_df)
-        logger.info(f"      ✓ Extracted {len(all_reads_df)} total reads")
+        logger.info(f"      ✓ Extracted {len(reads_df)} total reads")
         logger.info(f"      ✓ Found {polyA_count} reads in polyA-containing read sets")
 
         # ========== STEP 2: EXTRACT ANNOTATION ==========
@@ -555,33 +554,31 @@ def run_pipeline(
             gc.collect()
         else:
             logger.info("      ✓ No polyA reads to process")
-
-        # ========== FINAL MERGE: COMBINE NON-POLYA AND POLYA RESULTS ==========
-        logger.info("[9/9] Combining results...")
-
-        # Merge based on what distance dataframes we have
-        if not distances_df.empty and polyA_distances_df is not None and not polyA_distances_df.empty:
-            # Both pathways produced results
-            distances_df = pd.concat([distances_df, polyA_distances_df], ignore_index=True)
-            logger.info(
-                f"      ✓ Combined {len(distances_df)} total distances (non-polyA + polyA)"
-            )
-        elif polyA_distances_df is not None and not polyA_distances_df.empty:
-            # Only polyA pathway produced results
-            distances_df = polyA_distances_df
-            logger.info(f"      ✓ Using {len(distances_df)} polyA distances only")
-        # else: distances_df already has non-polyA results or is empty (handled above)
-
-    # ========== WRITE OUTPUT ==========
+    
+    # ========== WRITE OUTPUT (FILE 1: ALL READS TO PAS) ==========
+    logger.info("[9/9] Writing output files...")
     output_path_obj = Path(output_path)
     output_path_obj.parent.mkdir(parents=True, exist_ok=True)
     distances_df.to_csv(output_path_obj, index=False)
+    logger.info(f"      ✓ File 1: All reads → PAS distances")
+    logger.info(f"        Path: {output_path_obj.absolute()}")
+    logger.info(f"        Records: {len(distances_df)}")
+
+    # ========== WRITE OUTPUT (FILE 2: POLYA READS TO INFERRED CPA SITES) ==========
+    if polyA_distances_df is not None and not polyA_distances_df.empty:
+        # Generate output filename for polyA CPA distances
+        output_path_obj_polya = output_path_obj.parent / (
+            output_path_obj.stem + "_polyA_cpa" + output_path_obj.suffix
+        )
+        polyA_distances_df.to_csv(output_path_obj_polya, index=False)
+        logger.info(f"      ✓ File 2: PolyA RS → inferred CPA distances")
+        logger.info(f"        Path: {output_path_obj_polya.absolute()}")
+        logger.info(f"        Records: {len(polyA_distances_df)}")
+    else:
+        logger.info("      ✓ File 2: No polyA reads to CPA distances (no polyA reads processed)")
 
     logger.info("=" * 70)
     logger.info("✓ PIPELINE COMPLETED SUCCESSFULLY")
-    logger.info("=" * 70)
-    logger.info(f"Results written to: {output_path_obj.absolute()}")
-    logger.info(f"Total reads processed: {len(distances_df)}")
     logger.info("=" * 70)
 
     return distances_df
