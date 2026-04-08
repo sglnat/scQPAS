@@ -11,6 +11,7 @@ The tool divides reads from an **input BAM file** into two categories: reads wit
 This workflow results in two files:
 - **candidate read-PAS distances**: a file containing all reads and the distances of each read to all its possible PAS, respective of all possible transcript isoforms for this RS
 - **ground truth distances**: a file containing the distances of all reads within a polyA RS to the inferred cleavage and polyadenylation site(s) (CPA) of this RS
+
 When comparing the histogram plots of the ground truth distances and the candidate distances, the candidate reads belonging to the overlapping part of the histograms can be assigned to the PAS that the CPA of the ground truth data belongs to. **This is to be implemented computationally via Maximum Likelihood Calculation.**
 
 **IMPORTANT:** Due to high-complexity intermediate data generation, it is recommended to only apply scQPAS to regions of interest that span a gene.
@@ -55,25 +56,17 @@ Once installed and the conda environment is activated, use the CLI:
 scqpas --bam sample.bam --gtf annotation.gtf --pas atlas.bed --output results.csv
 ```
 
-For ground truth data, the polyadenylation site (PAS) is **automatically detected** from the read data by identifying the cleavage position with the most supporting evidence. For candidate distances, manual PAS specification is needed. To relieve computational burden, it is recommended to use PAS input file prefiltered to stringency and region of interest. ALternatively, it is also possible to filter by region and stringency directly in scQPAS, using dedicated flags.
+For ground truth data, the polyadenylation site (PAS) is **automatically detected** from the read data by identifying the cleavage position with the most supporting evidence. For candidate distances, manual PAS specification is needed.
+
+To relieve computational burden, it is recommended to use PAS input file prefiltered to stringency and region of interest. Alternatively, it is also possible to filter by region and stringency directly in scQPAS, using dedicated flags.
+
+**IMPORTANT:** It is strongly recommended to use `--region` flag.
 
 For all options:
 ```bash
 scqpas --help
 ```
 
-### Programmatic usage
-
-```python
-from scqpas import run_pipeline
-
-run_pipeline(
-    bam_path='sample.bam',
-    gtf_path='annotation.gtf',
-    output_path='results.csv'
-    # Note: PAS is automatically detected from reads
-)
-```
 
 ## Configuration
 
@@ -94,8 +87,6 @@ Then pass it to the CLI:
 scqpas --config config.yaml --bam sample.bam --gtf annotation.gtf --pas atlas.bed --output results.csv
 ```
 
-**Priority order:** CLI arguments > custom config > defaults
-
 
 ## How It Works
 
@@ -109,8 +100,6 @@ scqpas --config config.yaml --bam sample.bam --gtf annotation.gtf --pas atlas.be
 ### Data Flow
 
 ![Pipeline Diagram](dataflow_1.jpg)
-
-
 
 
 
