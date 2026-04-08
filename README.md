@@ -1,6 +1,19 @@
 # scQPAS - Single-Cell Quantification of PolyAdenylation Sites
 
-A Python package for detecting and quantifying distances between reads and polyadenylation sites in single-cell RNA-seq data.
+A Python package for quantifying distances between reads and polyadenylation sites in single-cell RNA-seq data.
+
+## Overview
+
+scQPAS analyzes single-cell RNA-seq BAM files to identify where transcripts are being cleaved and polyadenylated. For each read, it calculates the distance between the actual read start and known or inferred polyadenylation sites (PAS), providing insights into 3' end processing and transcript cleavage patterns across cell types.
+
+The tool divides reads from an **input BAM file** into two categories: reads with a polyA tail (polyA reads) and reads without one (non-polyA reads). polyA read detection is based on the workflow [SCINPAS](https://academic.oup.com/nar/article/53/D1/D197/7893321). scQPAS then works on read set (RS) level: A RS consists of all reads with the same cell barcode and unique molecular identifier, with polyA RS containing as one polyA read and non-polyA RS containing only non-polyA reads. Since each RS is sequenced from the same RNA molecule, all reads within belong to the same PAS. scQPAS enables transcriptomic distance calculation of each read to its PAS, using an **input BED file from [PolyASite Atlas v3.0](https://polyasite.unibas.ch/atlas_sc)** to include all possible PAS for a RS and an **input GTF file** to account for different splicing isoforms that a RS can belong to.
+
+This workflow results in two files:
+- **candidate read-PAS distances**: a file containing all reads and the distances of each read to all its possible PAS, respective of all possible transcript isoforms for this RS
+- **ground truth distances**: a file containing the distances of all reads within a polyA RS to the inferred cleavage and polyadenylation site(s) (CPA) of this RS
+When comparing the histogram plots of the ground truth distances and the candidate distances, the candidate reads belonging to the overlapping part of the histograms can be assigned to the PAS that the CPA of the ground truth data belongs to. **This is to be implemented computationally via Maximum Likelihood Calculation.**
+
+**IMPORTANT:** Due to high-complexity intermediate data generation, it is recommended to only apply scQPAS to regions of interest that span a gene.
 
 ## Installation
 
@@ -22,39 +35,27 @@ conda env create -f environment.yml
 
 # Activate the environment
 conda activate scqpas
-
-# Install scQPAS
-pip install .
 ```
 
-### Development Installation
-
-For development work with editable mode:
-
+Installation of scQPAS depending on regular or editable mode:
 ```bash
-git clone https://github.com/sglnat/scQPAS.git
-cd scQPAS
+# Install scQPAS in regular mode
+pip install .
 
-# Create conda environment with all dependencies
-conda env create -f environment.yml
-
-# Activate the environment
-conda activate scqpas
-
-# Install scQPAS in editable mode
+# Install scQPAS for development work in editable mode:
 pip install -e .
 ```
+
 
 ### Command-line usage
 
 Once installed and the conda environment is activated, use the CLI:
 
 ```bash
-scqpas --bam sample.bam --gtf annotation.gtf --output results.csv
+scqpas --bam sample.bam --gtf annotation.gtf --pas atlas.bed --output results.csv
 ```
 
-The polyadenylation site (PAS) is now **automatically detected** from the read data by identifying
-the cleavage position with the most supporting evidence. No manual PAS specification is needed.
+For ground truth data, the polyadenylation site (PAS) is **automatically detected** from the read data by identifying the cleavage position with the most supporting evidence. For candidate distances, manual PAS specification is needed. To relieve computational burden, it is recommended to use PAS input file prefiltered to stringency and region of interest. ALternatively, it is also possible to filter by region and stringency directly in scQPAS, using dedicated flags.
 
 For all options:
 ```bash
@@ -76,203 +77,56 @@ run_pipeline(
 
 ## Configuration
 
-scQPAS uses YAML configuration files for managing pipeline parameters. You can use the default configuration or provide your own.
+scQPAS uses YAML configuration files for managing pipeline parameters. The default configuration is at `scqpas/config/defaults.yaml`.
 
-### Using Default Configuration
-
-The default configuration is located at `scqpas/config/defaults.yaml` and includes:
-- **PolyA detection**: percentage threshold (80%), length threshold (5 bp)
-- **Output settings**: default filenames and BEDtools score
-- **Logging**: default level (INFO) and log file location
-
-### Using Custom Configuration
-
-Create a custom YAML config file with your desired parameters:
+Create a custom YAML file to override defaults:
 
 ```yaml
-# my_config.yaml
+# config.yaml
 polya_detection:
   percentage_threshold: 85
   length_threshold: 6
-  short_polyA_length_cutoff: 5
-  short_polyA_required_percentage: 100
-  use_fixed_coordinates: false
-
-output:
-  default_output_file: "my_results.csv"
-  bedtools_score: 1000
-  column_separator: "\t"
-
-logging:
-  default_level: "DEBUG"
-  default_file: "my_pipeline.log"
-  enable_file_logging: true
 ```
 
-Then use it with the CLI:
+Then pass it to the CLI:
 
 ```bash
-scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --pas pas_sites.bed
+scqpas --config config.yaml --bam sample.bam --gtf annotation.gtf --pas atlas.bed --output results.csv
 ```
 
-### Parameter Priority
-
-Command-line arguments override config file values, which override defaults:
-
-```
-Default config < Custom config file < CLI arguments
-```
-
-For example:
-```bash
-# Uses config file value for percentage_threshold
-scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --pas pas_sites.bed
-
-# CLI argument overrides config file
-scqpas --config my_config.yaml --bam sample.bam --gtf annotation.gtf --pas pas_sites.bed --percentage-threshold 90
-```
-
-## Project Status
-
-**Current Stage:**
-
-- ✅ Modularized Python package with proper packaging structure
-- ✅ CLI interface via Click
-- ✅ Core pipeline functionality for single CPA site analysis
-- ✅ BAM extraction with polyA detection
-- ✅ GTF parsing and feature extraction
-- ✅ CIGAR-based intron validation
-- ✅ Distance calculation from CPA sites
-- ✅ Logging framework implemented
-- ✅ YAML-based configuration management
-- ✅ Comprehensive docstrings (NumPy format) for all functions
-- ✅ Full type hints on all function signatures
-
-**To be implemented:**
-
-- [ ] Multi-CPA site analysis
-- [ ] Visualization of distance distributions
-- [ ] Likelihood calculation methods
-- [ ] Comprehensive unit test coverage
+**Priority order:** CLI arguments > custom config > defaults
 
 
-## Repository Structure
+## How It Works
 
-```
-scQPAS/
-├── README.md                          # This file
-├── LICENSE                            # Apache 2.0 (chosen arbitrarly for now)
-├── pyproject.toml                     # Package configuration
-├── environment.yml                    # Conda environment specification
-│
-├── scqpas/                            # Main Python package
-│   ├── __init__.py                    # Package initialization, version info
-│   ├── cli.py                         # CLI interface (Click-based)
-│   ├── core.py                        # Pipeline orchestration logic
-│   ├── logging_config.py              # Logging configuration
-│   ├── config_manager.py              # Configuration management
-│   ├── extract_reads_BAM.py           # BAM file parsing, polyA detection
-│   ├── extract_annotation_GTF.py      # GTF parsing, feature extraction
-│   ├── extend_1kb_GTF.py              # GTF terminal exon extension
-│   ├── extract_cigar_BAM.py           # CIGAR string parsing and validation
-│   ├── calculate_distances.py         # Distance computation logic
-│   ├── bedtools_intersections.py      # BEDtools intersection wrapper
-│   │
-│   └── config/                        # Configuration files
-│       └── defaults.yaml              # Default pipeline parameters
-│
-├── tests/                             # Unit tests
-│   └── __init__.py
-│
-└── .gitignore                         # Git ignore rules
-```
-
-
-## Pipeline Overview
-
-The pipeline processes single-cell BAM files to quantify distances between read cleavage sites and polyadenylation sites:
-
-1. **Read Extraction** (`extract_reads_BAM.py`): Extract reads from BAM, detect polyA tails by nucleotide composition
-2. **Annotation Extraction** (`extract_annotation_GTF.py`): Parse GTF to generate genes, exons, and introns
-3. **CIGAR Extraction** (`extract_cigar_BAM.py`): Parse CIGAR strings to derive intron coordinates from reads
-4. **Bedtools Intersection** (`bedtools_intersections.py`): Intersect reads with annotated features
-5. **CIGAR Filtering** (`extract_cigar_BAM.py`): Validate reads by comparing CIGAR-derived introns with annotation
-6. **Distance Calculation** (`calculate_distances.py`): Compute distances from CPA sites to read ends
-
-Additional:
-**GTF Extension** (`extend_1kb_GTF.py`): Extend terminal exons by 1kb to capture 3' UTR regions. This file will be used for multi-PAS distance
+1. **Read Extraction**: Extract reads from BAM, detect polyA tails
+2. **Annotation Parsing**: Extract genes, exons, and introns from GTF
+3. **CIGAR Processing**: Parse CIGAR strings to derive intron coordinates
+4. **Feature Intersection**: Intersect reads with annotated features using bedtools
+5. **Read Validation**: Filter reads using CIGAR-derived introns
+6. **Distance Calculation**: Compute distances from polyadenylation sites to read ends
 
 ### Data Flow
 
 ![Pipeline Diagram](dataflow_1.jpg)
 
 
-## Requirements
-
-- Python ≥ 3.10
-- **Core dependencies**: pandas ≥ 1.5.0, numpy ≥ 1.23.0, click ≥ 8.0, pysam ≥ 0.21.0, pyyaml ≥ 6.0
-- **External**: bedtools (for sequence intersection operations)
-
-**Development dependencies** (optional, for `pip install -e ".[dev]"`):
-- pytest ≥ 7.0 (testing)
-- black ≥ 23.0 (code formatting)
-- mypy ≥ 1.0 (static type checking)
-- sphinx ≥ 5.0 (documentation generation)
-
-See `pyproject.toml` for complete version specifications.
 
 
-## Development
 
-### Setup for development
+### Code Quality
 
-```bash
-git clone https://github.com/sglnat/scQPAS.git
-cd scQPAS
-pip install -e ".[dev]"
-```
+- **Type hints**: Full type annotations on all functions enable IDE support and static checking
+- **Docstrings**: NumPy-style docstrings for all functions
+- **Formatting**: Use Black: `black scqpas/`
+- **Type checking**: Run mypy: `mypy scqpas/`
 
-### Code quality
+### Structure
 
-The codebase follows best practices for production-quality Python:
+- `scqpas/`: Core modules
+- `scqpas/config/`: Configuration files
+- `cli.py`: CLI interface
 
-**Docstrings**: All functions have comprehensive NumPy-style docstrings describing:
-- Purpose and behavior
-- Parameters with types and descriptions
-- Return values with types
-- Examples where applicable
-
-**Type Hints**: All function signatures include full type annotations:
-```python
-from typing import Optional, Union, Tuple
-import pandas as pd
-from .config_manager import ConfigManager
-
-def extract_exons(
-    gtf_file_path: str,
-    exons_output: Optional[str] = None,
-    config_manager: Optional[ConfigManager] = None,
-) -> pd.DataFrame:
-```
-
-These enable:
-- IDE autocomplete and inline documentation
-- Static type checking with mypy: `mypy scqpas/`
-- Better code clarity and maintainability
-- Programmatic API exploration
-
-**Code Formatting**: Use Black for consistent code style:
-```bash
-black scqpas/
-```
-
-### Code organization
-
-- **`scqpas/`**: Core Python modules with importable functions
-- **`scqpas/config/`**: Configuration files and config manager
-- **`cli.py`**: CLI interface that wraps core functions
-- **`tests/`**: Unit tests (to be expanded)
-- Centralized config management via YAML files (see Configuration section above)
 
 
 ## License
